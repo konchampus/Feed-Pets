@@ -463,8 +463,8 @@
 	</nav>
 
 	{#if sheetKind}
-		<div class="sheet-backdrop" role="presentation" onclick={(e) => { if (e.target === e.currentTarget) sheetKind = null; }} onkeydown={(e) => { if (e.key === 'Escape') sheetKind = null; }}>
-			<section class="care-sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title"><div class="sheet-handle"></div><button class="sheet-close" aria-label="Закрыть" onclick={() => sheetKind = null}>×</button><p class="overline">ОТМЕТКА ДЛЯ {activePet?.name.toUpperCase()}</p><h2 id="sheet-title">{careLabels[sheetKind]}</h2>
+		<div class="sheet-backdrop">
+			<div class="care-sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title" tabindex="-1"><div class="sheet-handle"></div><button class="sheet-close" aria-label="Закрыть" onclick={() => sheetKind = null}>×</button><p class="overline">ОТМЕТКА ДЛЯ {activePet?.name.toUpperCase()}</p><h2 id="sheet-title">{careLabels[sheetKind]}</h2>
 				{#if sheetKind === 'meal'}<label for="care-amount">Граммы корма</label><div class="amount-input"><input id="care-amount" type="number" min="1" max="5000" bind:value={amount} /><span>г</span></div><label for="care-label">Марка или тип корма</label><input id="care-label" bind:value={label} placeholder="Например, утренний корм" />
 				{:else if sheetKind === 'walk'}<label for="care-amount">Длительность прогулки</label><div class="amount-input"><input id="care-amount" type="number" min="1" max="600" bind:value={amount} placeholder="30" /><span>мин</span></div><label for="care-label">Маршрут или занятие</label><input id="care-label" bind:value={label} placeholder="Например, парк" />
 				{:else if sheetKind === 'medicine'}<label for="care-label">Лекарство и доза</label><input id="care-label" bind:value={label} placeholder="Название, доза" />
@@ -472,7 +472,7 @@
 				{:else if sheetKind === 'vet' || sheetKind === 'vaccine'}<label for="care-label">Что записать</label><input id="care-label" bind:value={label} placeholder={sheetKind === 'vet' ? 'Осмотр, клиника' : 'Название прививки'} />
 				{:else}<label for="care-label">Заметка о воде</label><input id="care-label" bind:value={label} placeholder="Например, сменил воду" />{/if}
 				<label for="care-note">Заметка <span>необязательно</span></label><textarea id="care-note" bind:value={note} rows="2" placeholder="Что полезно знать семье?"></textarea><button class="primary-button save-care" onclick={() => { void saveCare(); playSound(); }}>{editingEventId ? 'Сохранить изменения' : 'Сохранить отметку'}</button>
-			</section>
+			</div>
 		</div>
 	{/if}
 	{#if toast}<div class="toast" role="status">{toast}</div>{/if}
