@@ -12,11 +12,12 @@
 - [x] Отключать локальную и серверную push-подписку при выходе из аккаунта.
 - [x] Добавить unit/e2e сценарии и CI для Pages.
 - [x] Проверить синтаксис TypeScript Edge Functions и модулей, JSON/YAML и отсутствие ключей в исходниках.
-- [ ] Установить зависимости; сейчас npm Registry отвечает `ERR_SSL_WRONG_VERSION_NUMBER`. TLS-проверки не ослаблять.
+- [ ] Установить зависимости локально; npm Registry отвечает `ERR_SSL_WRONG_VERSION_NUMBER`. TLS-проверки не ослаблять.
 - [ ] Создать и проверить `package-lock.json`, не меняя npm TLS-проверки.
-- [ ] Успешно запустить `npm run check`, unit tests, Playwright E2E и `npm run build`; локальные команды пока не находят SvelteKit/Vitest/Playwright/Vite без `node_modules`.
-- [ ] Проверить GitHub Actions после отправки коммитов.
-- [ ] Двумя независимыми агентами пройти сайт реальными кликами на desktop и узком мобильном viewport; сейчас сайт не запускается локально без зависимостей.
+- [x] В GitHub Actions проверить `npm run check`, unit tests, Playwright E2E и `npm run build` (run `36932575800`, commit `f104b97`): все шаги build job прошли.
+- [x] Проверить GitHub Actions после отправки коммитов: сборка и тесты проходят, Pages deploy пока не проходит.
+- [ ] Включить GitHub Pages в `Settings → Pages → Build and deployment → Source: GitHub Actions` и проверить повторную публикацию. Сейчас Pages API и публичный адрес возвращают 404.
+- [ ] Двумя независимыми агентами пройти опубликованный сайт реальными кликами на desktop и узком мобильном viewport. Оба агента попробовали открыть страницу, но их браузерный инструмент сообщил `Browser is not available`; клики по приложению не выполнены. Повторить после включения Pages и появления браузерного доступа.
 - [ ] Проверить, что обе семьи видят только свои записи; участник исправляет только свои записи, владелец управляет собакой и расписанием.
 - [ ] Проверить RLS и миграции на чистом Supabase-проекте; исходники независимо просмотрены, выполнение на живом backend не проверено.
 - [ ] Завершить финальный независимый аудит исправлений push.
@@ -25,7 +26,7 @@
 
 - [ ] Создать Supabase-проект и применить миграции по порядку.
 - [ ] Добавить публичные GitHub Actions Secrets: `PUBLIC_SUPABASE_URL`, `PUBLIC_SUPABASE_ANON_KEY`, `PUBLIC_VAPID_KEY`.
-- [ ] Настроить GitHub Pages → GitHub Actions и проверить Pages deploy.
+- [ ] Настроить GitHub Pages → GitHub Actions и проверить Pages deploy (текущий deploy job завершился ошибкой; страница пока отсутствует).
 - [ ] Настроить Supabase Site URL/redirect URL с путём репозитория.
 - [ ] Настроить отдельный Gmail SMTP с App Password в Supabase и проверить письмо подтверждения/восстановления.
 - [ ] Создать Google OAuth client и добавить credentials в Supabase.
@@ -43,4 +44,4 @@
 - [x] Проверить, что локальная ветка `main` содержит исходный коммит `8fe5894`.
 - [x] Настроить Git remote репозитория `Feed-Pets` на SSH по ключу.
 - [x] Проверить вход GitHub по SSH в `BatchMode`.
-- [ ] Закоммитить изменения этапами и отправить их в `main`.
+- [x] Коммитить изменения этапами и отправлять их в `main`; последний отправленный коммит — `f104b97`.
