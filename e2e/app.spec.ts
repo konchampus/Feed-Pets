@@ -4,6 +4,7 @@ test('opens dog journal and records a meal', async ({ page }) => {
 	page.on('pageerror', (error) => console.log(`Browser error: ${error.stack ?? error.message}`));
 	page.on('console', (message) => { if (message.type() === 'error') console.log(`Browser console: ${message.text()}`); });
 	await page.goto('/');
+	await expect(page.locator('.app-shell')).toHaveAttribute('data-ready', 'true');
 	await expect(page.getByRole('heading', { name: /привет, семья/i })).toBeVisible();
 	await page.getByRole('button', { name: 'Кормление', exact: true }).click();
 	const dialog = page.getByRole('dialog');
@@ -15,6 +16,7 @@ test('opens dog journal and records a meal', async ({ page }) => {
 
 test('opens settings with local mode and privacy status', async ({ page }) => {
 	await page.goto('/');
+	await expect(page.locator('.app-shell')).toHaveAttribute('data-ready', 'true');
 	await page.getByRole('button', { name: 'Настройки', exact: true }).click();
 	await expect(page.getByRole('heading', { name: 'Настройки' })).toBeVisible();
 	await expect(page.getByText(/на этом устройстве/i)).toBeVisible();

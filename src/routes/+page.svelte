@@ -10,6 +10,7 @@
 
 	type Tab = 'home' | 'history' | 'schedule' | 'settings';
 	let tab = $state<Tab>('home');
+	let appReady = $state(false);
 	let pets = $state<Pet[]>([{ id: 'milo', name: 'Мило', breed: 'Корги', birthday: '2022-04-16', weightKg: 12.4, allergies: '', healthNotes: '' }]);
 	let events = $state<CareEvent[]>([]);
 	let schedules = $state<CareSchedule[]>([]);
@@ -81,6 +82,7 @@
 		} else {
 			pets = getPets(); events = getEvents(); schedules = getSchedules();
 		}
+		appReady = true;
 		if ('serviceWorker' in navigator) void navigator.serviceWorker.ready.then((registration) => registration.pushManager.getSubscription()).then((subscription) => pushEnabled = Boolean(subscription)).catch(() => undefined);
 		if (supabase) authListener = supabase.auth.onAuthStateChange((event) => {
 			if (event === 'PASSWORD_RECOVERY') { tab = 'settings'; settingsPanel = 'auth'; authMode = 'reset'; authMessage = 'Введите новый пароль.'; }
@@ -361,7 +363,7 @@
 	<meta name="apple-mobile-web-app-status-bar-style" content="default" />
 </svelte:head>
 
-<div class:reduce-motion={reducedMotion} class="app-shell">
+<div class:reduce-motion={reducedMotion} class="app-shell" data-ready={appReady}>
 	<header class="topbar">
 		<a class="brand" href={`${base}/`} aria-label="Лапки — на главную"><span class="brand-mark">⌁</span><span>лапки</span></a>
 		<div class="top-date">{dateText}</div>
