@@ -1,6 +1,8 @@
 import { expect, test } from '@playwright/test';
 
 test('opens dog journal and records a meal', async ({ page }) => {
+	page.on('pageerror', (error) => console.log(`Browser error: ${error.stack ?? error.message}`));
+	page.on('console', (message) => { if (message.type() === 'error') console.log(`Browser console: ${message.text()}`); });
 	await page.goto('/');
 	await expect(page.getByRole('heading', { name: /привет, семья/i })).toBeVisible();
 	await page.getByRole('button', { name: 'Кормление', exact: true }).click();
