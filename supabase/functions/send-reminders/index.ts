@@ -1,0 +1,44 @@
+import { createClient } from 'npm:@supabase/supabase-js@2';
+import { makePushClient, sendFamilyPush } from '../_shared/push.ts';
+
+function getLocalTime(timezone: string) {
+	const now = new Date();
+	const parts = new Intl.DateTimeFormat('en-CA', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(now);
+	const value = (type: string) => parts.find((part) => part.type === type)?.value ?? '';
+	const weekday = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(value('weekday'));
+	return { date: `${value('year')}-${value('month')}-${value('day')}`, minute: `${value('hour')}:${value('minute')}`, weekday };
+}
+
+Deno.serve(async (request) => {
+	if (request.method !== 'POST') return Response.json({ error: 'Method not allowed' }, { status: 405 });
+	const cronSecret = Deno.env.get('CRON_SECRET');
+	if (!cronSecret || request.headers.get('Authorization') !== `Bearer ${cronSecret}`) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+	const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false } });
+	const { data: schedules, error } = await admin.from('care_schedules').select('id,family_id,pet_id,kind,title,local_time,timezone,weekdays,last_notified_for,pets(name),created_by').eq('is_active', true);
+	if (error) return Response.json({ error: 'Could not load schedules' }, { status: 500 });
+	const due: typeof schedules = [];
+	for (const schedule of schedules ?? []) {
+		let local;
+		try { local = getLocalTime(schedule.timezone); } catch { continue; }
+		const scheduledTime = String(schedule.local_time).slice(0, 5);
+		if (schedule.weekdays.includes(local.weekday) && scheduledTime <= local.minute && schedule.last_notified_for !== local.date) due.push(schedule);
+	}
+	if (!due.length) return Response.json({ sent: 0 });
+	try {
+		const push = makePushClient();
+		let sent = 0;
+		for (const schedule of due) {
+			const localDate = getLocalTime(schedule.timezone).date;
+			const { data: claimed, error: claimError } = await admin.rpc('claim_care_schedule', { schedule_id: schedule.id, local_date: localDate });
+			if (claimError || typeof claimed !== 'string') continue;
+			const dogName = (schedule.pets as { name?: string } | null)?.name ?? 'собака';
+			try {
+				await sendFamilyPush(admin, push, schedule.family_id, null, { title: 'Напоминание от Лапок', body: `${dogName}: ${schedule.title}`, url: './', tag: `schedule-${schedule.id}` });
+				const { data: completed, error: completeError } = await admin.rpc('complete_care_schedule', { schedule_id: schedule.id, local_date: localDate, claim_token: claimed });
+				if (completeError || !completed) throw completeError ?? new Error('Schedule claim is no longer active');
+				sent++;
+			} catch { await admin.rpc('release_care_schedule', { schedule_id: schedule.id, claim_token: claimed }); }
+		}
+		return Response.json({ sent });
+	} catch { return Response.json({ error: 'Push is not configured' }, { status: 503 }); }
+});

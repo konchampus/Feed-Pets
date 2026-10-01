@@ -1,0 +1,20 @@
+[functions.login-by-username]
+verify_jwt = false
+
+[functions.create-family]
+verify_jwt = true
+
+[functions.create-invite]
+verify_jwt = true
+
+[functions.accept-invite]
+verify_jwt = true
+
+[functions.register-push]
+verify_jwt = true
+
+[functions.push-event]
+verify_jwt = true
+
+[functions.send-reminders]
+verify_jwt = false
