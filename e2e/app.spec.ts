@@ -11,7 +11,7 @@ test('opens dog journal and records a meal', async ({ page }) => {
 	await expect(dialog).toBeVisible();
 	await dialog.locator('#care-amount').fill('75');
 	await page.getByRole('button', { name: 'Сохранить отметку' }).click();
-	await expect(page.getByText('75 г')).toBeVisible();
+	await expect(page.getByText('Кормление · 75 г', { exact: true })).toBeVisible();
 });
 
 test('opens settings with local mode and privacy status', async ({ page }) => {
