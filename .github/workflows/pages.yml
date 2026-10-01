@@ -21,7 +21,21 @@ jobs:
         with:
           node-version: 22
       - run: npm install --no-audit --no-fund
-      - run: npm run check
+      - name: Check Svelte and TypeScript
+        shell: bash
+        run: |
+          set +e
+          output="$(npm run check 2>&1)"
+          result=$?
+          printf '%s\n' "$output"
+          if [ "$result" -ne 0 ]; then
+            printf '%s\n' "$output" | tail -n 80 | while IFS= read -r line; do
+              line="${line//'%'/'%25'}"
+              line="${line//$'\r'/'%0D'}"
+              printf '::error::%s\n' "$line"
+            done
+          fi
+          exit "$result"
       - run: npm run test:unit
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
