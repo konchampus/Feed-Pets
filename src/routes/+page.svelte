@@ -48,7 +48,7 @@
 	let petWeight = $state('');
 	let petAllergies = $state('');
 	let petHealthNotes = $state('');
-	let fileInput: HTMLInputElement;
+	let fileInput = $state<HTMLInputElement>();
 	let toastTimer: ReturnType<typeof setTimeout>;
 	let authListener: { unsubscribe: () => void } | null = null;
 	const kindOptions: CareKind[] = ['meal', 'walk', 'water', 'medicine', 'weight', 'vet', 'vaccine'];
