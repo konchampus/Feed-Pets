@@ -1,4 +1,6 @@
-# Feed-Pets · Лапки
+# Feed-Pets
+
+Лапки — семейный дневник ухода за собакой.
 
 Семейный PWA-дневник ухода за собакой. Стек: Svelte 5, SvelteKit, TypeScript, Supabase и Three.js. Статическая версия публикуется на GitHub Pages.
 
