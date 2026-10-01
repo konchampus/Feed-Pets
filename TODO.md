@@ -16,7 +16,7 @@
 - [ ] Создать и проверить `package-lock.json`, не меняя npm TLS-проверки.
 - [x] В GitHub Actions проверить `npm run check`, unit tests, Playwright E2E и `npm run build` (run `36932575800`, commit `f104b97`): все шаги build job прошли.
 - [x] Проверить GitHub Actions после отправки коммитов: сборка и тесты проходят, Pages deploy пока не проходит.
-- [ ] Включить GitHub Pages в `Settings → Pages → Build and deployment → Source: GitHub Actions` и проверить повторную публикацию. Сейчас Pages API и публичный адрес возвращают 404; workflow дополнен проверкой `configure-pages`.
+- [ ] Включить GitHub Pages в `Settings → Pages → Build and deployment → Source: GitHub Actions` и проверить повторную публикацию. В run `36933825685` проверка `Configure GitHub Pages` упала, а deploy был пропущен; API и публичный адрес возвращают 404.
 - [ ] Двумя независимыми агентами пройти опубликованный сайт реальными кликами на desktop и узком мобильном viewport. Оба агента попробовали открыть страницу, но их браузерный инструмент сообщил `Browser is not available`; клики по приложению не выполнены. Повторить после включения Pages и появления браузерного доступа.
 - [ ] Проверить, что обе семьи видят только свои записи; участник исправляет только свои записи, владелец управляет собакой и расписанием.
 - [ ] Проверить RLS и миграции на чистом Supabase-проекте; исходники независимо просмотрены, выполнение на живом backend не проверено.
@@ -26,7 +26,7 @@
 
 - [ ] Создать Supabase-проект и применить миграции по порядку.
 - [ ] Добавить публичные GitHub Actions Secrets: `PUBLIC_SUPABASE_URL`, `PUBLIC_SUPABASE_ANON_KEY`, `PUBLIC_VAPID_KEY`.
-- [ ] Настроить GitHub Pages → GitHub Actions и проверить Pages deploy (последний deploy job завершился ошибкой; страница пока отсутствует).
+- [ ] Настроить GitHub Pages → GitHub Actions и проверить Pages deploy (run `36933825685`: Pages не настроен, deploy был пропущен; страница пока отсутствует).
 - [ ] Настроить Supabase Site URL/redirect URL с путём репозитория.
 - [ ] Настроить отдельный Gmail SMTP с App Password в Supabase и проверить письмо подтверждения/восстановления.
 - [ ] Создать Google OAuth client и добавить credentials в Supabase.
