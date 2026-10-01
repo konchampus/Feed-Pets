@@ -33,6 +33,11 @@ jobs:
           result=$?
           printf '%s\n' "$output"
           if [ "$result" -ne 0 ]; then
+            {
+              printf '### npm run check output\n\n```text\n'
+              printf '%s\n' "$output" | tail -n 120
+              printf '\n```\n'
+            } >> "$GITHUB_STEP_SUMMARY"
             printf '%s\n' "$output" | tail -n 80 | while IFS= read -r line; do
               line="${line//'%'/'%25'}"
               line="${line//$'\r'/'%0D'}"
