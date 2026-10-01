@@ -5,16 +5,20 @@ const samplePet: Pet = {
 	allergies: '', healthNotes: ''
 };
 
+let dataScope = 'local';
+
+export function setDataScope(scope: string) { dataScope = scope; }
+
 function read<T>(key: string, fallback: T): T {
 	if (typeof localStorage === 'undefined') return fallback;
 	try {
-		const value = localStorage.getItem(`lapki:${key}`);
+		const value = localStorage.getItem(dataScope === 'local' ? `lapki:${key}` : `lapki:${dataScope}:${key}`);
 		return value ? (JSON.parse(value) as T) : fallback;
 	} catch { return fallback; }
 }
 
 function write<T>(key: string, value: T) {
-	if (typeof localStorage !== 'undefined') localStorage.setItem(`lapki:${key}`, JSON.stringify(value));
+	if (typeof localStorage !== 'undefined') localStorage.setItem(dataScope === 'local' ? `lapki:${key}` : `lapki:${dataScope}:${key}`, JSON.stringify(value));
 }
 
 export function getPets(): Pet[] { return read('pets', [samplePet]); }
@@ -24,11 +28,12 @@ export function saveEvents(events: CareEvent[]) { write('events', events); }
 export function getSchedules(): CareSchedule[] { return read('schedules', []); }
 export function saveSchedules(schedules: CareSchedule[]) { write('schedules', schedules); }
 
-export function addEvent(event: Omit<CareEvent, 'id' | 'occurredAt'> & { occurredAt?: string }): CareEvent[] {
+export function addEvent(event: Omit<CareEvent, 'id' | 'occurredAt'> & { occurredAt?: string }): CareEvent {
 	const events = getEvents();
-	events.unshift({ id: crypto.randomUUID(), occurredAt: event.occurredAt ?? new Date().toISOString(), ...event });
+	const newEvent = { id: crypto.randomUUID(), occurredAt: event.occurredAt ?? new Date().toISOString(), ...event };
+	events.unshift(newEvent);
 	saveEvents(events);
-	return events;
+	return newEvent;
 }
 
 export function todayMeals(events: CareEvent[], petId: string, now = new Date()) {

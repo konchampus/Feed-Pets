@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { addEvent, getEvents, saveEvents, todayMeals } from './store';
+import { addEvent, getEvents, saveEvents, setDataScope, todayMeals } from './store';
 import type { CareEvent } from './types';
 
-afterEach(() => { localStorage.clear(); vi.useRealTimers(); });
+afterEach(() => { localStorage.clear(); setDataScope('local'); vi.useRealTimers(); vi.unstubAllGlobals(); });
 
 describe('care journal storage', () => {
 	it('counts only this dog\'s meals from the current local day', () => {
@@ -18,7 +18,15 @@ describe('care journal storage', () => {
 
 	it('persists newly logged care events', () => {
 		vi.stubGlobal('crypto', { randomUUID: () => 'event-1' });
-		addEvent({ petId: 'milo', kind: 'water', by: 'Я', occurredAt: '2026-10-02T10:00:00.000Z' });
-		expect(getEvents()[0]).toMatchObject({ id: 'event-1', kind: 'water', petId: 'milo' });
+		const newEvent = addEvent({ petId: 'milo', kind: 'water', by: 'Я', occurredAt: '2026-10-02T10:00:00.000Z' });
+		expect(newEvent).toMatchObject({ id: 'event-1', kind: 'water', petId: 'milo' });
+		expect(getEvents()[0]).toEqual(newEvent);
+	});
+
+	it('keeps each signed-in family data separate from local mode', () => {
+		setDataScope('family-a'); saveEvents([{ id: 'a', petId: 'milo', kind: 'meal', occurredAt: '2026-10-02T10:00:00.000Z', by: 'A' }]);
+		setDataScope('family-b'); expect(getEvents()).toEqual([]);
+		setDataScope('local'); expect(getEvents()).toEqual([]);
+		setDataScope('family-a'); expect(getEvents()[0].id).toBe('a');
 	});
 });

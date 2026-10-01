@@ -17,6 +17,7 @@ export type CareEvent = {
 	kind: CareKind;
 	occurredAt: string;
 	by: string;
+	authorId?: string;
 	amount?: number;
 	unit?: string;
 	label?: string;
