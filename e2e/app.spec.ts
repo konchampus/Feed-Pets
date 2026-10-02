@@ -25,6 +25,7 @@ test('opens dog journal and records a meal', async ({ page }) => {
 	await dialog.locator('#care-amount').fill('75');
 	await page.getByRole('button', { name: 'Сохранить отметку' }).click();
 	await expect(page.getByText('Кормление · 75 г', { exact: true })).toBeVisible();
+	await expect(dialog).toHaveCount(0);
 });
 
 test('rejects invalid care amounts and keeps the dialog open', async ({ page }) => {
@@ -43,6 +44,7 @@ test('rejects invalid care amounts and keeps the dialog open', async ({ page }) 
 	await dialog.getByRole('button', { name: 'Сохранить отметку' }).click();
 	await expect(page.getByRole('status')).toHaveText('Проверьте допустимое количество');
 	await expect(dialog).toBeVisible();
+	await expect(page.getByText('Кормление · -5 г', { exact: true })).toHaveCount(0);
 	await expect(page.getByRole('button', { name: 'Сохранить отметку' })).toBeVisible();
 	await page.keyboard.press('Escape');
 	await expect(dialog).toHaveCount(0);
