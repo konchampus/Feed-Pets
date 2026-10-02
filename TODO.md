@@ -33,6 +33,7 @@
 - [x] Проверить офлайн E2E после исправления service worker cache (run `37022855403`, commit `d6e56f6`).
 - [x] Проверить синтаксис TypeScript Edge Functions и модулей, JSON/YAML и отсутствие ключей в исходниках.
 - [x] После отложенной загрузки Three.js выполнить check (0 ошибок/предупреждений), 10 unit-тестов, 13 E2E и production build; Three.js остался отдельным чанком 704.69 КБ / 181.05 КБ gzip.
+- [x] Опубликовать commit f252a5a: GitHub Actions build/deploy завершились успешно; главная и все 10 JS/CSS assets опубликованной страницы отвечают HTTP 200.
 - [x] Установить локальные зависимости с временным использованием настроенного системного proxy; `strict-ssl=true`, параметры proxy не сохранялись.
 - [x] Создать `package-lock.json` без ослабления TLS; `npm ci --strict-ssl=true` переустанавливает пакеты по lockfile.
 - [x] Локально проверить по чистой установке `npm run check`, 10 unit-тестов, 12 Playwright E2E и `npm run build`.
