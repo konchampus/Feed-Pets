@@ -4,7 +4,8 @@
 
 - [x] Создать SvelteKit/Svelte 5 основу для статической публикации и адаптивный интерфейс.
 - [x] Добавить ежедневный журнал кормления, прогулок, воды, лекарств, веса, ветеринара и прививок.
-- [ ] Проверить чистый первый запуск без фиктивного профиля, ручное добавление собаки и перенос старых записей/расписания.
+- [x] Добавить Playwright E2E для чистого запуска без фиктивной собаки, добавления профиля и переноса старых записей/расписания (run `37027019676`).
+- [ ] Повторить эти сценарии вручную в опубликованном приложении после восстановления управления браузером.
 - [x] Добавить расписание и локальный экспорт/импорт резервной копии.
 - [x] Добавить PWA manifest, service worker, offline-кэш, 3D-миску и настройки анимации/звука.
 - [x] Добавить Supabase schema, RLS, вход по логину и email, семейные приглашения и Edge Functions.
@@ -18,8 +19,8 @@
 - [x] Проверить синтаксис TypeScript Edge Functions и модулей, JSON/YAML и отсутствие ключей в исходниках.
 - [ ] Установить зависимости локально; повторный `npm install --strict-ssl=true --fetch-retries=0` завершился `ERR_SSL_WRONG_VERSION_NUMBER`. TLS-проверки не ослаблять.
 - [ ] Создать и проверить `package-lock.json`, не меняя npm TLS-проверки.
-- [x] В GitHub Actions проверить `npm run check`, unit tests, Playwright E2E и `npm run build` (run `37022855403`, commit `d6e56f6`): все проверки, включая offline reload, Configure Pages и deploy, прошли.
-- [x] Проверить GitHub Pages после настройки: repo metadata `has_pages: true`; run `37017681400` завершил Configure Pages и deploy успешно.
+- [x] В GitHub Actions проверить `npm run check`, unit tests, Playwright E2E и `npm run build` (run `37027019676`, commit `d024db0`): проверки и публикация прошли.
+- [x] Проверить GitHub Pages: repo metadata `has_pages: true`; run `37027019676` завершил Configure Pages и deploy успешно. Старый run `36932575800` упал на deploy; это больше не воспроизводится.
 - [x] Вынести `prerender = true` в `src/routes/+page.ts` и проверять в CI непустой `build/index.html`.
 - [x] Проверить опубликованную главную: HTTP 200; manifest, service worker и все найденные JS/CSS assets тоже отвечают HTTP 200.
 - [x] В ручной CUA-проверке открыть историю и расписание, создать кормление 125 г и подтвердить его в истории; создать ежедневное напоминание и подтвердить его отображение.
