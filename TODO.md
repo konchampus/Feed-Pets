@@ -14,12 +14,13 @@
 - [x] Не создавать username bucket после превышения IP лимита; очищать неактивные login buckets ограниченными пачками.
 - [x] Добавить unit/e2e сценарии и CI для Pages.
 - [x] Проверить синтаксис TypeScript Edge Functions и модулей, JSON/YAML и отсутствие ключей в исходниках.
-- [ ] Установить зависимости локально; npm Registry отвечает `ERR_SSL_WRONG_VERSION_NUMBER`. TLS-проверки не ослаблять.
+- [ ] Установить зависимости локально; повторный `npm install --strict-ssl=true --fetch-retries=0` завершился `ERR_SSL_WRONG_VERSION_NUMBER`. TLS-проверки не ослаблять.
 - [ ] Создать и проверить `package-lock.json`, не меняя npm TLS-проверки.
 - [x] В GitHub Actions проверить `npm run check`, unit tests, Playwright E2E и `npm run build` (run `36962457746`, commit `4deec12`): все шаги build job прошли.
 - [x] Проверить GitHub Actions после настройки Pages: runs `36962457746` и `36962952950` завершили build, Configure GitHub Pages и deploy успешно.
-- [ ] Создать `index.html` для корня статической публикации и проверить, что `https://konchampus.github.io/Feed-Pets/` отвечает HTTP 200. Сейчас GitHub Pages отдаёт приложение из `404.html` со статусом 404.
-- [ ] Двумя независимыми агентами пройти опубликованный сайт реальными кликами на desktop и узком мобильном viewport. Оба агента независимо попробовали открыть страницу, но браузерный мост Codex вернул `nodeRepl.fetch request failed`; клики по приложению не выполнены. Повторить после восстановления браузерного доступа.
+- [x] Вынести `prerender = true` в route module и добавить в CI обязательную проверку `build/index.html`.
+- [ ] После следующего Pages run проверить, что `build/index.html` опубликован, а `https://konchampus.github.io/Feed-Pets/` отвечает HTTP 200. На commit `698f530` root URL всё ещё отвечал 404; исправление route prerender в текущей ветке ожидает CI.
+- [ ] Двумя независимыми агентами пройти опубликованный сайт реальными кликами на desktop и узком мобильном viewport. На 390×844 агент увидел главную, набор действий и навигацию, переполнения нет; клик по «История» завис. Второй агент не получил браузерную вкладку (`nodeRepl.fetch request failed`). Повторить полный сценарий после восстановления браузерного доступа.
 - [ ] Проверить, что обе семьи видят только свои записи; участник исправляет только свои записи, владелец управляет собакой и расписанием.
 - [ ] Проверить RLS и миграции на чистом Supabase-проекте; исходники независимо просмотрены, выполнение на живом backend не проверено.
 - [x] Завершить независимый аудит исходников по RLS, приглашениям, авторизации и push; живой backend не подключён и запросами не проверен.
@@ -28,7 +29,7 @@
 
 - [ ] Создать Supabase-проект и применить миграции по порядку.
 - [ ] Добавить публичные GitHub Actions Secrets: `PUBLIC_SUPABASE_URL`, `PUBLIC_SUPABASE_ANON_KEY`, `PUBLIC_VAPID_KEY`.
-- [x] Настроить GitHub Pages → GitHub Actions и выполнить deploy (runs `36962457746` и `36962952950` успешны); проверить HTTP 200 главной после добавления prerender.
+- [x] Настроить GitHub Pages → GitHub Actions и выполнить deploy (run `36964128319` успешен); проверить HTTP 200 главной после текущего исправления route prerender.
 - [ ] Настроить Supabase Site URL/redirect URL с путём репозитория.
 - [ ] Настроить отдельный Gmail SMTP с App Password в Supabase и проверить письмо подтверждения/восстановления.
 - [ ] Создать Google OAuth client и добавить credentials в Supabase.

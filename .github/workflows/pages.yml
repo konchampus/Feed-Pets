@@ -55,6 +55,8 @@ jobs:
           PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.PUBLIC_SUPABASE_ANON_KEY }}
           PUBLIC_VAPID_KEY: ${{ secrets.PUBLIC_VAPID_KEY }}
         run: npm run build
+      - name: Check Pages entry point
+        run: test -s build/index.html
       - uses: actions/upload-pages-artifact@v3
         with:
           path: build/
