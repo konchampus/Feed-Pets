@@ -117,6 +117,22 @@ test('keeps navigation and main screens usable on a narrow viewport', async ({ p
 	await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
+test('loads the cached journal and records care while offline', async ({ page, context }) => {
+	await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller)), { timeout: 15000 }).toBe(true);
+	await page.reload();
+	await expect(page.getByRole('heading', { name: /привет, семья/i })).toBeVisible();
+
+	await context.setOffline(true);
+	try {
+		await page.reload();
+		await expect(page.getByRole('heading', { name: /привет, семья/i })).toBeVisible();
+		await recordMeal(page, '55');
+		await expect(page.getByText('Кормление · 55 г', { exact: true })).toBeVisible();
+	} finally {
+		await context.setOffline(false);
+	}
+});
+
 test('opens settings with local mode and privacy status', async ({ page }) => {
 	await page.getByRole('button', { name: 'Настройки', exact: true }).click();
 	await expect(page.getByRole('heading', { name: 'Настройки' })).toBeVisible();
