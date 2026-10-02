@@ -28,6 +28,9 @@ a { color: inherit; }
 .brand-mark { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 50% 50% 48% 14%; background: var(--leaf); color: white; font: 700 24px/1 var(--serif); transform: rotate(-28deg); }
 .top-date { justify-self: center; text-transform: capitalize; color: var(--muted); font-size: 13px; }
 .avatar { justify-self: end; width: 38px; height: 38px; border: 1px solid #b9c3a6; border-radius: 50%; background: #e7ebd9; color: var(--leaf-dark); font-weight: 700; }
+.cloud-error { width: min(1240px, calc(100% - 64px)); margin: 14px auto 0; padding: 12px 15px; display: flex; justify-content: space-between; align-items: center; gap: 12px; border: 1px solid #e2c9b1; border-radius: 12px; background: #fff8ed; color: #754f37; font-size: 12px; }
+.cloud-error p { margin: 0; line-height: 1.45; }
+.cloud-error button { flex: 0 0 auto; min-height: 36px; }
 main { width: min(1240px, calc(100% - 64px)); margin: 0 auto; }
 .home-layout { display: grid; grid-template-columns: minmax(0, 1fr) 385px; column-gap: 44px; align-items: start; }
 .welcome { grid-column: 1; grid-row: 1; min-height: 222px; display: flex; justify-content: space-between; align-items: center; padding: 34px 0 20px; }
@@ -203,6 +206,7 @@ textarea { padding-top: 10px; resize: vertical; }
 @media (min-width: 1500px) { .topbar, main { width: min(1320px, calc(100% - 100px)); } .home-layout { grid-template-columns: minmax(0, 1fr) 430px; column-gap: 60px; } }
 @media (max-width: 900px) {
 	.topbar, main { width: calc(100% - 38px); }
+	.cloud-error { width: calc(100% - 38px); align-items: stretch; flex-direction: column; }
 	.home-layout { grid-template-columns: minmax(0, 1fr) 300px; column-gap: 25px; }
 	.welcome h1 { font-size: 39px; }
 	.pet-switch { min-width: auto; }

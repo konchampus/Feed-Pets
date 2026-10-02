@@ -9,6 +9,7 @@
 	import type { RealtimeChannel } from '@supabase/supabase-js';
 
 	type Tab = 'home' | 'history' | 'schedule' | 'settings';
+	type FamilyContext = { userId: string; familyId: string; sessionVersion: number };
 	let tab = $state<Tab>('home');
 	let appReady = $state(false);
 	let pets = $state<Pet[]>([]);
@@ -21,6 +22,8 @@
 	let settingsPanel = $state<'profile' | 'add-pet' | 'edit-pet' | 'auth' | ''>('');
 	let editingPetId = $state('');
 	let toast = $state('');
+	let familyLoadError = $state('');
+	let familyLoadPending = $state(false);
 	let amount = $state<string | number | undefined>('');
 	let label = $state('');
 	let note = $state('');
@@ -32,6 +35,7 @@
 	let cloudUser = $state('');
 	let currentUserId = $state('');
 	let familyId = $state('');
+	let familyUserId = $state('');
 	let familyName = $state('');
 	let familyRole = $state<'owner' | 'member' | ''>('');
 	let familyPetName = $state('');
@@ -39,6 +43,12 @@
 	let inviteLink = $state('');
 	let inviteEmail = $state('');
 	let familyChannel: RealtimeChannel | null = null;
+	let familyLoadVersion = 0;
+	let sessionVersion = 0;
+	let pendingAuthSignOutVersion: number | null = null;
+	let signedOutUserId = '';
+	let pushStatusVersion = 0;
+	let signOutPending = $state(false);
 	let pushEnabled = $state(false);
 	let soundEnabled = $state(false);
 	let reducedMotion = $state(false);
@@ -82,21 +92,27 @@
 		soundEnabled = localStorage.getItem('lapki:sound') === 'true';
 		scene = localStorage.getItem('lapki:scene') !== 'false';
 		if (supabase) {
+			familyLoadPending = true;
 			pets = getPets(); events = getEvents(); schedules = getSchedules();
 			appReady = true;
+			const authSessionVersion = sessionVersion;
 			void supabase.auth.getUser().then(async ({ data }) => {
+				if (authSessionVersion !== sessionVersion) return;
 				if (!data.user) {
+					familyLoadPending = false;
 					pets = getPets(); events = getEvents(); schedules = getSchedules();
 					return;
 				}
 				currentUserId = data.user.id;
 				cloudUser = data.user.user_metadata.display_name || data.user.email || '';
 				member = data.user.user_metadata.display_name || data.user.email?.split('@')[0] || member;
-				await loadFamily(data.user.id);
-				if (new URLSearchParams(location.search).has('invite')) await acceptInvite();
+				if (await loadFamily(data.user.id) && new URLSearchParams(location.search).has('invite')) await acceptInvite();
+				if (authSessionVersion === sessionVersion) void refreshPushStatus(sessionVersion);
 			}).catch(() => {
+				if (authSessionVersion !== sessionVersion) return;
+				familyLoadPending = false;
 				setDataScope('local');
-				currentUserId = ''; cloudUser = ''; familyId = ''; familyRole = ''; familyName = '';
+				currentUserId = ''; cloudUser = ''; familyId = ''; familyUserId = ''; familyRole = ''; familyName = '';
 				pets = getPets(); events = getEvents(); schedules = getSchedules();
 				notify('Не удалось загрузить семейный профиль; показаны данные этого устройства');
 			});
@@ -104,8 +120,42 @@
 			pets = getPets(); events = getEvents(); schedules = getSchedules();
 			appReady = true;
 		}
-		if ('serviceWorker' in navigator) void navigator.serviceWorker.ready.then((registration) => registration.pushManager.getSubscription()).then((subscription) => pushEnabled = Boolean(subscription)).catch(() => undefined);
-		if (supabase) authListener = supabase.auth.onAuthStateChange((event) => {
+		void refreshPushStatus(sessionVersion);
+		if (supabase) authListener = supabase.auth.onAuthStateChange((event, session) => {
+			if (event === 'SIGNED_OUT') {
+				sessionVersion += 1;
+				const signOutVersion = sessionVersion;
+				signedOutUserId = currentUserId;
+				pendingAuthSignOutVersion = signOutVersion;
+				familyLoadVersion += 1; familyLoadPending = Boolean(currentUserId);
+				queueMicrotask(() => {
+					if (sessionVersion !== signOutVersion || !currentUserId) return;
+					pendingAuthSignOutVersion = null;
+					clearCloudSession();
+					void cleanupPushAfterSignOut(sessionVersion);
+				});
+			}
+			if (event === 'SIGNED_IN' && session?.user && (session.user.id !== currentUserId || pendingAuthSignOutVersion !== null)) {
+				sessionVersion += 1;
+				pendingAuthSignOutVersion = null;
+				familyLoadVersion += 1; familyLoadPending = true;
+				queueMicrotask(() => {
+					if (session.user.id === currentUserId && !familyLoadPending) return;
+					const previousUserId = currentUserId || signedOutUserId;
+					signedOutUserId = '';
+					clearCloudSession();
+					currentUserId = session.user.id;
+					cloudUser = session.user.user_metadata.display_name || session.user.email || '';
+					member = session.user.user_metadata.display_name || session.user.email?.split('@')[0] || member;
+					localStorage.setItem('lapki:member', member);
+					const pushCleanup = previousUserId && previousUserId !== session.user.id
+						? cleanupPushForAccountChange(session.user.id)
+						: Promise.resolve();
+					void Promise.all([loadFamily(session.user.id), pushCleanup]).then(([loaded]) => {
+						if (loaded) void refreshPushStatus(sessionVersion);
+					}).catch(() => undefined);
+				});
+			}
 			if (event === 'PASSWORD_RECOVERY') { tab = 'settings'; settingsPanel = 'auth'; authMode = 'reset'; authMessage = 'Введите новый пароль.'; }
 		}).data.subscription;
 		const query = new URLSearchParams(location.search);
@@ -115,6 +165,15 @@
 
 	function notify(message: string) {
 		toast = message; clearTimeout(toastTimer); toastTimer = setTimeout(() => toast = '', 2800);
+	}
+	function blockFamilyChanges() {
+		if (!supabase || (!familyLoadPending && (!cloudUser || !familyLoadError))) return false;
+		notify('Обновите семейные данные перед изменениями');
+		return true;
+	}
+	function getFamilyContext(): FamilyContext { return { userId: currentUserId, familyId, sessionVersion }; }
+	function isCurrentFamilyContext(context: FamilyContext) {
+		return context.userId === currentUserId && context.familyId === familyId && context.sessionVersion === sessionVersion;
 	}
 	function updateEvents(rows: CareEvent[]) { events = rows; saveEvents(rows); }
 	function rememberFocus() {
@@ -145,16 +204,19 @@
 	function editEvent(event: CareEvent) { rememberFocus(); editingEventId = event.id; sheetKind = event.kind; amount = event.amount?.toString() ?? ''; label = event.label ?? ''; note = event.note ?? ''; }
 	async function saveCare() {
 		if (!sheetKind || !activePet) return;
+		if (blockFamilyChanges()) return;
 		if (!isValidCareAmount(sheetKind, amount)) { notify('Проверьте допустимое количество'); return; }
 		const savedAmount = parseOptionalAmount(amount);
 		if (editingEventId) {
 			const original = events.find((event) => event.id === editingEventId);
 			if (!original) return;
+			const context = getFamilyContext();
 			const updated = { ...original, amount: savedAmount, unit: sheetKind === 'meal' ? 'г' : sheetKind === 'walk' ? 'мин' : sheetKind === 'weight' ? 'кг' : undefined, label: label.trim() || undefined, note: note.trim() || undefined };
 			if (supabase && familyId) {
 				const { error } = await supabase.from('care_events').update({ amount: updated.amount ?? null, unit: updated.unit ?? null, label: updated.label ?? null, note: updated.note ?? null }).eq('id', updated.id);
 				if (error) { notify('Не удалось изменить эту запись'); return; }
 			}
+			if (!isCurrentFamilyContext(context)) return;
 			updateEvents(events.map((event) => event.id === updated.id ? updated : event));
 			closeCareForm(); notify('Запись исправлена'); return;
 		}
@@ -164,11 +226,15 @@
 	}
 	async function syncEvent(event: CareEvent) {
 		if (!supabase || !familyId) return;
+		const context = getFamilyContext();
 		const { error } = await supabase.from('care_events').insert({ id: event.id, family_id: familyId, pet_id: event.petId, kind: event.kind, occurred_at: event.occurredAt, actor_name: member, amount: event.amount, unit: event.unit, label: event.label, note: event.note });
-		if (error) notify('Запис сохранён на устройстве, синхронизация не удалась');
+		if (!isCurrentFamilyContext(context)) return;
+		if (error) notify('Запись сохранена на устройстве, синхронизация не удалась');
 		else {
 			for (let attempt = 0; attempt < 4; attempt++) {
+				if (!isCurrentFamilyContext(context)) return;
 				const { error: pushError } = await supabase.functions.invoke('push-event', { body: { eventId: event.id } });
+				if (!isCurrentFamilyContext(context)) return;
 				if (!pushError) return;
 				if (attempt < 3) {
 					const response = pushError.context instanceof Response ? pushError.context : null;
@@ -180,29 +246,69 @@
 		}
 	}
 	async function loadFamily(userId = '') {
-		if (!supabase) return;
-		if (userId) setDataScope(`user:${userId}`);
-		const { data: memberships } = await supabase.from('family_members').select('family_id,role,families(name)').limit(1);
-		const membership = memberships?.[0];
+		if (!supabase) return true;
+		const loadVersion = ++familyLoadVersion;
+		const activeUserId = userId || currentUserId;
+		const isCurrentLoad = () => loadVersion === familyLoadVersion && (!activeUserId || activeUserId === currentUserId);
+		const finishFamilyLoad = (result: boolean) => {
+			if (loadVersion === familyLoadVersion) familyLoadPending = false;
+			return result;
+		};
+		familyLoadPending = true;
+		familyLoadError = '';
+		const previousFamilyId = familyId;
+		const previousFamilyUserId = familyUserId;
+		if (previousFamilyId && previousFamilyUserId !== activeUserId) {
+			familyId = ''; familyUserId = ''; familyRole = ''; familyName = '';
+			setDataScope(activeUserId ? `user:${activeUserId}` : 'local');
+			pets = getPets(); events = getEvents(); schedules = getSchedules();
+		}
+		if (familyChannel) { void supabase.removeChannel(familyChannel); familyChannel = null; }
+		const membershipResult = await Promise.resolve(supabase.from('family_members').select('family_id,role,families(name)').limit(1)).catch(() => null);
+		if (!isCurrentLoad()) return finishFamilyLoad(false);
+		if (!membershipResult || membershipResult.error) {
+			if (previousFamilyId && previousFamilyUserId === activeUserId) {
+				setDataScope(`family:${previousFamilyId}`);
+				pets = getPets(); events = getEvents(); schedules = getSchedules();
+			} else {
+				familyId = ''; familyRole = ''; familyName = '';
+				if (activeUserId) setDataScope(`user:${activeUserId}`);
+				pets = getPets(); events = getEvents(); schedules = getSchedules();
+			}
+			familyLoadError = 'Не удалось проверить семейный профиль. Повторите загрузку.';
+			return finishFamilyLoad(false);
+		}
+		const membership = membershipResult.data?.[0];
 		if (!membership) {
-			if (familyChannel) { void supabase.removeChannel(familyChannel); familyChannel = null; }
-			familyId = ''; familyRole = ''; familyName = ''; pets = []; events = []; schedules = [];
-			savePets(pets); saveEvents(events); saveSchedules(schedules);
-			return;
+			familyId = ''; familyRole = ''; familyName = ''; familyUserId = activeUserId;
+			if (activeUserId) setDataScope(`user:${activeUserId}`);
+			pets = getPets(); events = getEvents(); schedules = getSchedules();
+			return finishFamilyLoad(true);
 		}
 		familyId = membership.family_id;
+		familyUserId = activeUserId;
 		familyRole = membership.role;
 		setDataScope(`family:${familyId}`);
 		familyName = (membership.families as { name?: string } | null)?.name ?? '';
-		const [petResult, eventResult, scheduleResult] = await Promise.all([
+		const results = await Promise.all([
 			supabase.from('pets').select('id,name,breed,birthday,photo_url,allergies,health_notes').eq('family_id', familyId),
 			supabase.from('care_events').select('id,pet_id,kind,occurred_at,author_id,actor_name,amount,unit,label,note').eq('family_id', familyId).order('occurred_at', { ascending: false }).limit(500),
 			supabase.from('care_schedules').select('id,pet_id,kind,title,local_time,weekdays,is_active').eq('family_id', familyId)
-		]);
-		if (eventResult.data) {
-			events = eventResult.data.map((row) => ({ id: row.id, petId: row.pet_id, kind: row.kind, occurredAt: row.occurred_at, authorId: row.author_id, by: row.actor_name, amount: row.amount ? Number(row.amount) : undefined, unit: row.unit ?? undefined, label: row.label ?? undefined, note: row.note ?? undefined }));
-			saveEvents(events);
+		]).catch(() => null);
+		if (!isCurrentLoad()) return finishFamilyLoad(false);
+		if (!results) {
+			pets = getPets(); events = getEvents(); schedules = getSchedules();
+			familyLoadError = 'Не удалось обновить семейные данные. Показана сохранённая копия; повторите загрузку.';
+			return finishFamilyLoad(false);
 		}
+		const [petResult, eventResult, scheduleResult] = results;
+		if (petResult.error || eventResult.error || scheduleResult.error) {
+			pets = getPets(); events = getEvents(); schedules = getSchedules();
+			familyLoadError = 'Не удалось обновить семейные данные. Показана сохранённая копия; повторите загрузку.';
+			return finishFamilyLoad(false);
+		}
+		events = eventResult.data.map((row) => ({ id: row.id, petId: row.pet_id, kind: row.kind, occurredAt: row.occurred_at, authorId: row.author_id, by: row.actor_name, amount: row.amount ? Number(row.amount) : undefined, unit: row.unit ?? undefined, label: row.label ?? undefined, note: row.note ?? undefined }));
+		saveEvents(events);
 		const latestWeight = new Map<string, number>();
 		for (const event of events) {
 			if (event.kind === 'weight' && event.amount && !latestWeight.has(event.petId)) latestWeight.set(event.petId, event.amount);
@@ -211,14 +317,18 @@
 		petIndex = 0; savePets(pets);
 		schedules = (scheduleResult.data ?? []).map((row) => ({ id: row.id, petId: row.pet_id, kind: row.kind, title: row.title, time: String(row.local_time).slice(0, 5), days: row.weekdays, enabled: row.is_active }));
 		saveSchedules(schedules);
+		const channelVersion = loadVersion;
+		const channelFamilyId = familyId;
 		if (familyChannel) void supabase.removeChannel(familyChannel);
 		familyChannel = supabase.channel(`family:${familyId}`)
 			.on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'pets', filter: `family_id=eq.${familyId}` }, (change) => {
+				if (familyLoadVersion !== channelVersion || familyId !== channelFamilyId) return;
 				const row = change.new as { id: string; name: string; breed: string; birthday: string | null; photo_url: string | null; allergies: string; health_notes: string };
 				pets = pets.map((pet) => pet.id === row.id ? { ...pet, name: row.name, breed: row.breed, birthday: row.birthday ?? '', photo: row.photo_url ?? undefined, allergies: row.allergies, healthNotes: row.health_notes } : pet);
 				savePets(pets);
 			})
 			.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'care_events', filter: `family_id=eq.${familyId}` }, (change) => {
+			if (familyLoadVersion !== channelVersion || familyId !== channelFamilyId) return;
 			const row = change.new as { id: string; pet_id: string; kind: CareKind; occurred_at: string; author_id: string; actor_name: string; amount: number | null; unit: string | null; label: string | null; note: string | null };
 			if (events.some((item) => item.id === row.id)) return;
 			const newEvent: CareEvent = { id: row.id, petId: row.pet_id, kind: row.kind, occurredAt: row.occurred_at, authorId: row.author_id, by: row.actor_name, amount: row.amount ? Number(row.amount) : undefined, unit: row.unit ?? undefined, label: row.label ?? undefined, note: row.note ?? undefined };
@@ -233,29 +343,42 @@
 				}
 			}
 		}).subscribe();
+		return finishFamilyLoad(true);
 	}
 	async function setupFamily() {
 		if (!supabase) return;
+		if (familyLoadPending) { notify('Дождитесь загрузки семейных данных'); return; }
+		if (familyLoadError) { notify('Сначала обновите данные семьи'); return; }
+		const context = getFamilyContext();
 		const petName = familyPetName.trim();
 		if (!familyName.trim() || !petName) { notify('Укажите название семьи и имя собаки'); return; }
 		const { data, error } = await supabase.functions.invoke('create-family', { body: { name: familyName, pet: { name: petName, breed: familyPetBreed.trim() } } });
+		if (!isCurrentFamilyContext(context)) return;
 		if (error || !data?.familyId) { notify('Не удалось создать семейный профиль'); return; }
-		await loadFamily(); settingsPanel = ''; notify('Семейный профиль создан');
+		if (!await loadFamily()) { notify('Профиль семьи создан, но данные не загрузились'); return; }
+		settingsPanel = ''; notify('Семейный профиль создан');
 	}
 	async function createInvite() {
 		if (!supabase || !familyId) return;
+		const context = getFamilyContext();
 		const { data, error } = await supabase.functions.invoke('create-invite', { body: { familyId, email: inviteEmail || undefined } });
+		if (!isCurrentFamilyContext(context)) return;
 		if (error || !data?.token) { notify('Не удалось создать приглашение'); return; }
 		inviteLink = `${location.origin}${base}/?invite=${data.token}`;
-		try { await navigator.clipboard.writeText(inviteLink); notify('Ссылка скопирована · действует 7 дней'); }
-		catch { notify('Приглашение готово — скопируйте ссылку'); }
+		try { await navigator.clipboard.writeText(inviteLink); }
+		catch { if (isCurrentFamilyContext(context)) notify('Приглашение готово — скопируйте ссылку'); return; }
+		if (isCurrentFamilyContext(context)) notify('Ссылка скопирована · действует 7 дней');
 	}
 	async function acceptInvite() {
 		const token = new URLSearchParams(location.search).get('invite');
 		if (!token || !supabase) return;
+		const context = getFamilyContext();
 		const { error } = await supabase.functions.invoke('accept-invite', { body: { token } });
+		if (!isCurrentFamilyContext(context)) return;
 		if (error) { authMessage = 'Приглашение недействительно, просрочено или уже использовано.'; return; }
-		history.replaceState({}, '', `${location.pathname}${location.hash}`); await loadFamily(); notify('Вы присоединились к семье');
+		history.replaceState({}, '', `${location.pathname}${location.hash}`);
+		if (!await loadFamily()) { notify('Приглашение принято, но семейные данные не загрузились'); return; }
+		notify('Вы присоединились к семье');
 	}
 	async function resetPassword() {
 		if (!supabase || !authEmail) { authMessage = 'Сначала укажите адрес электронной почты.'; return; }
@@ -274,15 +397,19 @@
 		settingsPanel = cloudUser && !familyId ? '' : 'add-pet';
 	}
 	async function removeEvent(event: CareEvent) {
+		if (blockFamilyChanges()) return;
+		const context = getFamilyContext();
 		if (supabase && familyId) {
 			if (familyRole !== 'owner') { notify('Записи семьи удаляет владелец'); return; }
 			const { error } = await supabase.from('care_events').delete().eq('id', event.id);
 			if (error) { notify('Не удалось удалить запись'); return; }
 		}
+		if (!isCurrentFamilyContext(context)) return;
 		updateEvents(events.filter((row) => row.id !== event.id)); notify('Запись удалена');
 	}
-	function addPet() {
+	async function addPet() {
 		if (supabase && familyId && familyRole !== 'owner') { notify('Профили собак меняет владелец семьи'); return; }
+		if (blockFamilyChanges()) return;
 		if (supabase && cloudUser && !familyId) { notify('Сначала создайте семейный профиль'); return; }
 		const name = petName.trim();
 		if (!name) { notify('Укажите имя собаки'); return; }
@@ -291,11 +418,20 @@
 		const petId = crypto.randomUUID();
 		const pet: Pet = { id: petId, name, breed: petBreed.trim() || 'Порода не указана', birthday: petBirthday, weightKg: parseOptionalAmount(petWeight) ?? 0, allergies: petAllergies.trim(), healthNotes: petHealthNotes.trim() };
 		if (supabase && familyId) {
-			void supabase.from('pets').insert({ family_id: familyId, name: pet.name, breed: pet.breed, birthday: pet.birthday || null, allergies: pet.allergies, health_notes: pet.healthNotes }).select('id').single().then(({ data, error }) => {
-				if (error || !data) { notify('Не удалось добавить собаку в семейный профиль'); return; }
-				if (pet.weightKg) void supabase?.from('care_events').insert({ pet_id: data.id, family_id: familyId, kind: 'weight', amount: pet.weightKg, unit: 'кг', actor_name: member });
-				pets = [...pets, { ...pet, id: data.id }]; savePets(pets); petIndex = pets.length - 1; settingsPanel = ''; petName = ''; petBreed = ''; petBirthday = ''; petWeight = ''; petAllergies = ''; petHealthNotes = ''; notify('Профиль собаки добавлен');
-			});
+			const context = getFamilyContext();
+			const petResult = await Promise.resolve(supabase.from('pets').insert({ family_id: familyId, name: pet.name, breed: pet.breed, birthday: pet.birthday || null, allergies: pet.allergies, health_notes: pet.healthNotes }).select('id').single()).catch(() => null);
+			if (!isCurrentFamilyContext(context)) return;
+			if (!petResult || petResult.error || !petResult.data) { notify('Не удалось добавить собаку в семейный профиль'); return; }
+			const { data } = petResult;
+			let weightSaved = true;
+			if (pet.weightKg) {
+				const weightResult = await Promise.resolve(supabase.from('care_events').insert({ pet_id: data.id, family_id: familyId, kind: 'weight', amount: pet.weightKg, unit: 'кг', actor_name: member }).then(({ error }) => !error)).catch(() => false);
+				if (!isCurrentFamilyContext(context)) return;
+				weightSaved = weightResult;
+			}
+			const savedPet = { ...pet, id: data.id, weightKg: weightSaved ? pet.weightKg : 0 };
+			pets = [...pets, savedPet]; savePets(pets); petIndex = pets.length - 1; settingsPanel = ''; petName = ''; petBreed = ''; petBirthday = ''; petWeight = ''; petAllergies = ''; petHealthNotes = '';
+			notify(weightSaved ? 'Профиль собаки добавлен' : 'Профиль добавлен, но вес не сохранён. Запишите его в истории.');
 			return;
 		}
 		if (pets.length === 0) {
@@ -316,6 +452,7 @@
 		settingsPanel = 'edit-pet';
 	}
 	async function savePetEdit() {
+		if (blockFamilyChanges()) return;
 		const pet = pets.find((item) => item.id === editingPetId);
 		if (!pet) return;
 		if (supabase && familyId && familyRole !== 'owner') { notify('Профили собак меняет владелец семьи'); return; }
@@ -334,8 +471,10 @@
 			healthNotes: petHealthNotes.trim()
 		};
 		if (supabase && familyId) {
+			const context = getFamilyContext();
 			const { error } = await supabase.from('pets').update({ name: updatedPet.name, breed: updatedPet.breed, birthday: updatedPet.birthday || null, allergies: updatedPet.allergies, health_notes: updatedPet.healthNotes }).eq('id', pet.id);
 			if (error) { notify('Не удалось изменить профиль собаки'); return; }
+			if (!isCurrentFamilyContext(context)) return;
 		}
 		pets = pets.map((item) => item.id === pet.id ? updatedPet : item);
 		savePets(pets);
@@ -361,22 +500,28 @@
 		notify(`Старые данные привязаны к собаке ${pet.name}`);
 	}
 	async function removePet(petId: string) {
+		if (blockFamilyChanges()) return;
+		const context = getFamilyContext();
 		if (supabase && familyId) {
 			if (familyRole !== 'owner') { notify('Профили собак меняет владелец семьи'); return; }
 			const { error } = await supabase.from('pets').delete().eq('id', petId);
 			if (error) { notify('Не удалось удалить профиль'); return; }
 		}
+		if (!isCurrentFamilyContext(context)) return;
 		pets = pets.filter((pet) => pet.id !== petId); events = events.filter((event) => event.petId !== petId); schedules = schedules.filter((item) => item.petId !== petId);
 		savePets(pets); saveEvents(events); saveSchedules(schedules); petIndex = 0; notify('Профиль удалён');
 	}
 	function addSchedule() {
+		if (blockFamilyChanges()) return;
 		if (supabase && familyId && familyRole !== 'owner') { notify('Расписание меняет владелец семьи'); return; }
 		if (!activePet) return;
 		if (!scheduleTitle.trim()) { notify('Укажите, о чём напомнить'); return; }
 		if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(scheduleTime)) { notify('Укажите корректное время'); return; }
 		const row: CareSchedule = { id: crypto.randomUUID(), petId: activePet.id, kind: scheduleKind, title: scheduleTitle.trim(), time: scheduleTime, days: [0,1,2,3,4,5,6], enabled: true };
 		if (supabase && familyId) {
+			const context = getFamilyContext();
 			void supabase.from('care_schedules').insert({ family_id: familyId, pet_id: row.petId, kind: row.kind, title: row.title, local_time: row.time, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone, weekdays: row.days }).select('id').single().then(({ data, error }) => {
+				if (!isCurrentFamilyContext(context)) return;
 				if (error || !data) { notify('Не удалось сохранить напоминание'); return; }
 				schedules = [...schedules, { ...row, id: data.id }]; saveSchedules(schedules); scheduleTitle = ''; notify('Напоминание добавлено');
 			});
@@ -385,20 +530,26 @@
 		schedules = [...schedules, row]; saveSchedules(schedules); scheduleTitle = ''; notify('Напоминание добавлено');
 	}
 	async function toggleSchedule(id: string) {
+		if (blockFamilyChanges()) return;
+		const context = getFamilyContext();
 		const schedule = schedules.find((item) => item.id === id);
 		if (supabase && familyId && familyRole !== 'owner') { notify('Расписание меняет владелец семьи'); return; }
 		if (supabase && familyId && schedule) {
 			const { error } = await supabase.from('care_schedules').update({ is_active: !schedule.enabled }).eq('id', id);
 			if (error) { notify('Не удалось обновить напоминание'); return; }
 		}
+		if (!isCurrentFamilyContext(context)) return;
 		schedules = schedules.map((item) => item.id === id ? { ...item, enabled: !item.enabled } : item); saveSchedules(schedules);
 	}
 	async function removeSchedule(id: string) {
+		if (blockFamilyChanges()) return;
+		const context = getFamilyContext();
 		if (supabase && familyId && familyRole !== 'owner') { notify('Расписание меняет владелец семьи'); return; }
 		if (supabase && familyId) {
 			const { error } = await supabase.from('care_schedules').delete().eq('id', id);
 			if (error) { notify('Не удалось удалить напоминание'); return; }
 		}
+		if (!isCurrentFamilyContext(context)) return;
 		schedules = schedules.filter((item) => item.id !== id);
 		saveSchedules(schedules);
 		notify('Напоминание удалено');
@@ -429,14 +580,18 @@
 	}
 	async function disablePush() {
 		if (!('serviceWorker' in navigator)) return;
-		const registration = await navigator.serviceWorker.ready;
-		const subscription = await registration.pushManager.getSubscription();
-		if (!subscription) { pushEnabled = false; return; }
-		if (supabase) {
-			const { error } = await supabase.from('push_subscriptions').delete().eq('endpoint', subscription.endpoint);
-			if (error) { notify('Не удалось отключить подписку на сервере'); return; }
-		}
-		await subscription.unsubscribe(); pushEnabled = false; notify('Уведомления отключены на этом устройстве');
+		try {
+			const registration = await navigator.serviceWorker.ready;
+			const subscription = await registration.pushManager.getSubscription();
+			if (!subscription) { pushEnabled = false; return; }
+			if (supabase) {
+				const { error } = await supabase.from('push_subscriptions').delete().eq('endpoint', subscription.endpoint);
+				if (error) { notify('Не удалось отключить подписку на сервере'); return; }
+			}
+			const removed = await subscription.unsubscribe();
+			if (!removed) { notify('Не удалось отключить уведомления на устройстве'); return; }
+			pushEnabled = false; notify('Уведомления отключены на этом устройстве');
+		} catch { notify('Не удалось отключить уведомления на устройстве'); }
 	}
 	async function authenticate() {
 		if (!supabase) { authMessage = 'Чтобы включить аккаунты, добавьте Supabase URL и anon key в настройки проекта и пересоберите приложение.'; return; }
@@ -457,37 +612,136 @@
 		const { data } = await supabase.auth.getUser(); cloudUser = data.user?.user_metadata.display_name || data.user?.email || '';
 		currentUserId = data.user?.id ?? '';
 		if (cloudUser) { member = cloudUser.split('@')[0]; localStorage.setItem('lapki:member', member); }
-		settingsPanel = ''; authMessage = ''; await loadFamily(data.user?.id); await acceptInvite();
+		settingsPanel = ''; authMessage = '';
+		if (!await loadFamily(data.user?.id)) return;
+		await acceptInvite();
+		let profileSaveFailed = false;
 		if (!familyId && data.user?.user_metadata.username) {
 			const { error } = await supabase.from('profiles').update({ username: data.user.user_metadata.username.toLowerCase(), display_name: data.user.user_metadata.display_name || member }).eq('user_id', data.user.id);
-			if (error) notify('Аккаунт создан, но логин уже занят');
+			profileSaveFailed = Boolean(error);
 		}
 		if (!familyId) { settingsPanel = 'profile'; familyPetName = ''; familyPetBreed = ''; }
-		notify(familyId ? 'Вы вошли в семейный профиль' : 'Аккаунт готов — настройте семейный профиль');
+		notify(profileSaveFailed ? 'Аккаунт готов, но логин не удалось сохранить' : familyId ? 'Вы вошли в семейный профиль' : 'Аккаунт готов — настройте семейный профиль');
 	}
 	async function oauth(provider: 'google' | 'custom:vk-id') {
 		if (!supabase) { authMessage = 'Сначала подключите Supabase.'; return; }
 		const { error } = await supabase.auth.signInWithOAuth({ provider, options: { redirectTo: `${location.origin}${base}/` } });
 		if (error) authMessage = 'Провайдер пока не настроен в Supabase.';
 	}
+	function clearCloudSession() {
+		sessionVersion += 1; familyLoadVersion += 1; familyLoadPending = false;
+		if (familyChannel && supabase) void supabase.removeChannel(familyChannel);
+		familyChannel = null; cloudUser = ''; currentUserId = ''; familyId = ''; familyUserId = ''; familyRole = ''; familyName = '';
+		inviteLink = ''; inviteEmail = '';
+		familyLoadError = ''; setDataScope('local'); pets = getPets(); events = getEvents(); schedules = getSchedules(); petIndex = 0;
+	}
+	async function refreshPushStatus(expectedSessionVersion: number) {
+		const statusVersion = ++pushStatusVersion;
+		if (!('serviceWorker' in navigator)) { if (statusVersion === pushStatusVersion && expectedSessionVersion === sessionVersion) pushEnabled = false; return; }
+		try {
+			const registration = await navigator.serviceWorker.ready;
+			const subscription = await registration.pushManager.getSubscription();
+			if (statusVersion === pushStatusVersion && expectedSessionVersion === sessionVersion) pushEnabled = Boolean(subscription);
+		} catch { /* Push status is optional when the service worker is unavailable. */ }
+	}
+	async function cleanupPushAfterSignOut(expectedSessionVersion: number) {
+		const statusVersion = ++pushStatusVersion;
+		if (!('serviceWorker' in navigator)) { pushEnabled = false; return; }
+		try {
+			const registration = await navigator.serviceWorker.ready;
+			if (sessionVersion !== expectedSessionVersion || currentUserId || statusVersion !== pushStatusVersion) return;
+			const subscription = await registration.pushManager.getSubscription();
+			if (sessionVersion !== expectedSessionVersion || currentUserId || statusVersion !== pushStatusVersion) return;
+			if (!subscription) { pushEnabled = false; return; }
+			const removed = await subscription.unsubscribe();
+			if (sessionVersion !== expectedSessionVersion || currentUserId || statusVersion !== pushStatusVersion) return;
+			pushEnabled = !removed;
+			if (!removed) notify('Вы вышли, но push-подписка на этом устройстве осталась включена');
+		} catch {
+			if (sessionVersion !== expectedSessionVersion || currentUserId) return;
+			pushEnabled = true;
+			notify('Вы вышли, но состояние push-подписки на устройстве проверить не удалось');
+		}
+	}
+	async function cleanupPushForAccountChange(expectedUserId: string) {
+		const expectedSessionVersion = sessionVersion;
+		const statusVersion = ++pushStatusVersion;
+		if (!('serviceWorker' in navigator)) { if (currentUserId === expectedUserId) pushEnabled = false; return; }
+		try {
+			const registration = await navigator.serviceWorker.ready;
+			if (sessionVersion !== expectedSessionVersion || currentUserId !== expectedUserId || statusVersion !== pushStatusVersion) return;
+			const subscription = await registration.pushManager.getSubscription();
+			if (sessionVersion !== expectedSessionVersion || currentUserId !== expectedUserId || statusVersion !== pushStatusVersion) return;
+			if (!subscription) { if (currentUserId === expectedUserId) pushEnabled = false; return; }
+			const removed = await subscription.unsubscribe();
+			if (sessionVersion !== expectedSessionVersion || currentUserId !== expectedUserId || statusVersion !== pushStatusVersion) return;
+			pushEnabled = !removed;
+			if (!removed) notify('Аккаунт сменился, но push-подписка осталась включена');
+		} catch {
+			if (sessionVersion === expectedSessionVersion && currentUserId === expectedUserId && statusVersion === pushStatusVersion) {
+				pushEnabled = true;
+				notify('Аккаунт сменился, но состояние push-подписки проверить не удалось');
+			}
+		}
+	}
 	async function signOut() {
+		if (signOutPending) return;
+		signOutPending = true;
+		const context = getFamilyContext();
+		try {
+		let pushCleanupFailed = false;
 		if ('serviceWorker' in navigator) {
 			try {
 				const registration = await navigator.serviceWorker.ready;
+				if (!isCurrentFamilyContext(context)) { notify('Сессия изменилась; выход не выполнялся'); return; }
 				const subscription = await registration.pushManager.getSubscription();
-				if (subscription) {
+				if (!isCurrentFamilyContext(context)) { notify('Сессия изменилась; выход не выполнялся'); return; }
+				if (!subscription) pushEnabled = false;
+				else {
 					const result = supabase ? await supabase.from('push_subscriptions').delete().eq('endpoint', subscription.endpoint) : { error: null };
+					if (!isCurrentFamilyContext(context)) { notify('Сессия изменилась; выход не выполнялся'); return; }
 					const removed = await subscription.unsubscribe();
-					pushEnabled = false;
-					if (result.error || !removed) notify('Устройство отключено не полностью; проверьте подписку в настройках');
+					if (!isCurrentFamilyContext(context)) { notify('Сессия изменилась; выход не выполнялся'); return; }
+					if (removed) pushEnabled = false;
+					if (result.error || !removed) pushCleanupFailed = true;
 				}
-			} catch { notify('Не удалось полностью отключить push-подписку'); }
+			} catch { pushCleanupFailed = true; }
 		}
-		await supabase?.auth.signOut();
-		if (familyChannel && supabase) void supabase.removeChannel(familyChannel);
-		familyChannel = null; cloudUser = ''; currentUserId = ''; familyId = ''; familyRole = ''; familyName = '';
-		setDataScope('local'); pets = getPets(); events = getEvents(); schedules = getSchedules(); petIndex = 0; pushEnabled = false;
-		notify('Вы вышли из аккаунта');
+		if (!isCurrentFamilyContext(context)) { notify('Сессия изменилась; выход не выполнялся'); return; }
+		if (supabase) {
+			let signOutFailed = false;
+			try { signOutFailed = Boolean((await supabase.auth.signOut()).error); }
+			catch { signOutFailed = true; }
+			if (!signOutFailed) {
+				try {
+					const { data, error } = await supabase.auth.getSession();
+					if (error) { notify('Сессию завершили, но аккаунт не удалось перепроверить'); return; }
+					if (data.session || (currentUserId && currentUserId !== context.userId)) {
+						notify('Обнаружена активная сессия; её данные оставлены открытыми'); return;
+					}
+				} catch { notify('Сессию завершили, но аккаунт не удалось перепроверить'); return; }
+			}
+			if (signOutFailed) {
+				let sessionStillActive = true;
+				try {
+					const { data, error: sessionError } = await supabase.auth.getSession();
+					if (!isCurrentFamilyContext(context)) return;
+					sessionStillActive = Boolean(data.session) || Boolean(sessionError);
+				} catch { /* Keep the signed-in view when session state is unknown. */ }
+				if (!sessionStillActive) {
+					clearCloudSession();
+					notify(pushCleanupFailed ? 'Вы вышли, но отключение push завершилось не полностью' : 'Сессия на устройстве завершена, сервер не подтвердил выход');
+				} else {
+					notify(pushCleanupFailed ? 'Не удалось выйти; отключение push завершилось не полностью' : 'Не удалось выйти из аккаунта');
+				}
+				return;
+			}
+		}
+		clearCloudSession();
+		notify(pushCleanupFailed ? 'Вы вышли, но отключение push завершилось не полностью' : 'Вы вышли из аккаунта');
+		} finally {
+			signOutPending = false;
+		}
 	}
 	function exportData() {
 		const blob = new Blob([JSON.stringify({ exportedAt: new Date().toISOString(), pets, events, schedules }, null, 2)], { type: 'application/json' });
@@ -497,8 +751,12 @@
 	async function readBackup(event: Event) {
 		const input = event.currentTarget as HTMLInputElement;
 		const file = input.files?.[0]; if (!file) return;
+		if (cloudUser) { input.value = ''; notify('Для восстановления выйдите в локальный режим'); return; }
+		if (blockFamilyChanges()) { input.value = ''; return; }
+		const context = getFamilyContext();
 		try {
 			const parsed: unknown = JSON.parse(await file.text());
+			if (cloudUser || !isCurrentFamilyContext(context) || familyLoadPending) { notify('Восстановление отменено после смены сессии'); return; }
 			if (!isValidBackup(parsed)) throw new Error('Invalid backup');
 			pets = parsed.pets; events = parsed.events; schedules = parsed.schedules; petIndex = 0;
 			savePets(pets); saveEvents(events); saveSchedules(schedules); notify('Данные восстановлены');
@@ -519,6 +777,7 @@
 		<div class="top-date">{dateText}</div>
 		<button class="avatar" aria-label="Открыть настройки" onclick={() => tab = 'settings'}>{member.slice(0,1).toUpperCase()}</button>
 	</header>
+	{#if familyLoadError || familyLoadPending}<div class="cloud-error" role={familyLoadError ? 'alert' : 'status'}><p>{familyLoadError || 'Проверяем семейный профиль…'}</p><button class="quiet-button" disabled={familyLoadPending} onclick={() => void loadFamily(currentUserId)}>{familyLoadPending ? 'Загружаем…' : 'Повторить загрузку'}</button></div>{/if}
 
 	<main>
 		{#if !appReady}
@@ -612,7 +871,7 @@
 				<div class="settings-grid"><div class="settings-main">
 						<section class="settings-block">
 							<div class="settings-heading"><div><h2>{familyId ? familyName || 'Моя семья' : 'Моя семья'}</h2><p>{cloudUser ? `В аккаунте ${cloudUser}` : 'Дневник сейчас хранится только здесь.'}</p></div><span>⌂</span></div>
-							{#if cloudUser}<button class="secondary-button" onclick={signOut}>Выйти из аккаунта</button>{:else if supabase}<button class="primary-button" onclick={() => settingsPanel = settingsPanel === 'auth' ? '' : 'auth'}>Войти или создать семью</button>{:else}<p class="fine-print">Семейный вход появится после подключения Supabase. Инструкция — в README репозитория.</p>{/if}
+							{#if cloudUser}<button class="secondary-button" disabled={signOutPending} onclick={signOut}>{signOutPending ? 'Выходим…' : 'Выйти из аккаунта'}</button>{:else if supabase}<button class="primary-button" onclick={() => settingsPanel = settingsPanel === 'auth' ? '' : 'auth'}>Войти или создать семью</button>{:else}<p class="fine-print">Семейный вход появится после подключения Supabase. Инструкция — в README репозитория.</p>{/if}
 							{#if settingsPanel === 'auth' && supabase}
 								<form class="auth-form" onsubmit={(event) => { event.preventDefault(); if (authMode === 'reset') void updatePassword(); else void authenticate(); }}>
 									{#if authMode !== 'reset'}<div class="mode-switch"><button type="button" aria-pressed={authMode === 'signin'} class:active={authMode === 'signin'} onclick={() => authMode = 'signin'}>Вход</button><button type="button" aria-pressed={authMode === 'signup'} class:active={authMode === 'signup'} onclick={() => authMode = 'signup'}>Регистрация</button></div>{/if}
@@ -672,7 +931,7 @@
 							{/if}
 						</section>
 						<section class="settings-block"><div class="settings-heading"><div><h2>Ваши напоминания</h2><p>{pushEnabled ? 'Уведомления включены на этом устройстве.' : 'Нужны для событий семьи и расписания.'}</p></div><span>♧</span></div>{#if isConfigured}{#if familyId}<button class="secondary-button" onclick={() => pushEnabled ? void disablePush() : void enablePush()}>{pushEnabled ? 'Отключить уведомления' : 'Включить уведомления'}</button>{:else}<button class="secondary-button" onclick={() => { tab = 'settings'; settingsPanel = cloudUser ? 'profile' : 'auth'; }}>{cloudUser ? 'Создать семейный профиль' : 'Войти в семейный профиль'}</button>{/if}{:else}<p class="fine-print">Push пока не настроен. Нужны проект Supabase и ключ VAPID; шаги есть в README репозитория.</p>{/if}<p class="fine-print">На iPhone откройте сайт в Safari, добавьте его на экран «Домой» и включите уведомления внутри установленного PWA.</p></section>
-					</div><aside class="settings-side"><section class="settings-block"><div class="settings-heading"><div><h2>Внешний вид</h2><p>Легко для глаз и устройства</p></div><span>◐</span></div><label class="setting-toggle"><span>3D-миска</span><input type="checkbox" bind:checked={scene} onchange={() => localStorage.setItem('lapki:scene', String(scene))} /><i></i></label><label class="setting-toggle"><span>Звук отметки</span><input type="checkbox" bind:checked={soundEnabled} onchange={() => localStorage.setItem('lapki:sound', String(soundEnabled))} /><i></i></label><label class="setting-toggle"><span>Уменьшить анимацию</span><input type="checkbox" bind:checked={reducedMotion} onchange={() => localStorage.setItem('lapki:reduced-motion', String(reducedMotion))} /><i></i></label></section><section class="settings-block"><div class="settings-heading"><div><h2>Копия данных</h2><p>Храните свои записи в безопасности</p></div><span>↧</span></div><button class="secondary-button" onclick={exportData}>Скачать резервную копию</button><button class="quiet-button" disabled={Boolean(supabase && familyId)} onclick={importData}>Восстановить из файла</button><input bind:this={fileInput} class="sr-only" type="file" accept="application/json" onchange={readBackup} /><p class="fine-print">{supabase && familyId ? 'Восстановление доступно в локальном режиме.' : 'На бесплатном тарифе Supabase нет автоматических резервных копий.'}</p></section><section class="settings-block info-block"><p class="overline">ПРИВАТНОСТЬ</p><p>Локальные данные остаются в этом браузере. Общий доступ появляется после подключения Supabase; записи защищены политиками доступа семьи.</p><a href="https://supabase.com/docs/guides/platform/free" target="_blank" rel="noreferrer">О бесплатном тарифе Supabase ↗</a></section></aside></div>
+					</div><aside class="settings-side"><section class="settings-block"><div class="settings-heading"><div><h2>Внешний вид</h2><p>Легко для глаз и устройства</p></div><span>◐</span></div><label class="setting-toggle"><span>3D-миска</span><input type="checkbox" bind:checked={scene} onchange={() => localStorage.setItem('lapki:scene', String(scene))} /><i></i></label><label class="setting-toggle"><span>Звук отметки</span><input type="checkbox" bind:checked={soundEnabled} onchange={() => localStorage.setItem('lapki:sound', String(soundEnabled))} /><i></i></label><label class="setting-toggle"><span>Уменьшить анимацию</span><input type="checkbox" bind:checked={reducedMotion} onchange={() => localStorage.setItem('lapki:reduced-motion', String(reducedMotion))} /><i></i></label></section><section class="settings-block"><div class="settings-heading"><div><h2>Копия данных</h2><p>Храните свои записи в безопасности</p></div><span>↧</span></div><button class="secondary-button" onclick={exportData}>Скачать резервную копию</button><button class="quiet-button" disabled={Boolean(cloudUser)} onclick={importData}>Восстановить из файла</button><input bind:this={fileInput} class="sr-only" type="file" accept="application/json" onchange={readBackup} /><p class="fine-print">{cloudUser ? 'Для восстановления выйдите в локальный режим.' : 'На бесплатном тарифе Supabase нет автоматических резервных копий.'}</p></section><section class="settings-block info-block"><p class="overline">ПРИВАТНОСТЬ</p><p>Локальные данные остаются в этом браузере. Общий доступ появляется после подключения Supabase; записи защищены политиками доступа семьи.</p><a href="https://supabase.com/docs/guides/platform/free" target="_blank" rel="noreferrer">О бесплатном тарифе Supabase ↗</a></section></aside></div>
 			</section>
 		{/if}
 	</main>
