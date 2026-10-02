@@ -13,6 +13,36 @@ test.beforeEach(async ({ page }) => {
 	await expect(page.locator('.app-shell')).toHaveAttribute('data-ready', 'true');
 });
 
+test('waits for browser idle before loading Three.js', async ({ browser, baseURL }) => {
+	const context = await browser.newContext();
+	const page = await context.newPage();
+	let threeRequested = false;
+	page.on('request', (request) => {
+		if (/(?:^|\/)three[^/?#]*(?:[?#]|$)/i.test(request.url())) threeRequested = true;
+	});
+	await page.addInitScript(() => {
+		localStorage.setItem('lapki:pets', JSON.stringify([{
+			id: 'e2e-dog', name: 'Рада', breed: 'Метис', birthday: '', weightKg: 0,
+			allergies: '', healthNotes: ''
+		}]));
+		const callbacks: IdleRequestCallback[] = [];
+		Object.defineProperty(window, 'requestIdleCallback', {
+			configurable: true,
+			value: (callback: IdleRequestCallback) => { callbacks.push(callback); return callbacks.length; }
+		});
+		Object.defineProperty(window, 'cancelIdleCallback', { configurable: true, value: () => undefined });
+		(window as Window & { releaseIdleCallbacks?: () => void }).releaseIdleCallbacks = () => {
+			for (const callback of callbacks.splice(0)) callback({ didTimeout: false, timeRemaining: () => 50 });
+		};
+	});
+	await page.goto(baseURL ?? 'http://127.0.0.1:4173/');
+	await expect(page.locator('.bowl-fallback')).toBeVisible();
+	expect(threeRequested).toBe(false);
+	await page.evaluate(() => (window as Window & { releaseIdleCallbacks: () => void }).releaseIdleCallbacks());
+	await expect.poll(() => threeRequested).toBe(true);
+	await context.close();
+});
+
 async function recordMeal(page: Page, grams: string) {
 	await expect(page.locator('.app-shell')).toHaveAttribute('data-ready', 'true');
 	await page.getByRole('button', { name: 'Кормление', exact: true }).click();
