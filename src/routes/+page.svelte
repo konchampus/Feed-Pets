@@ -2,7 +2,7 @@
 	import { onMount, tick } from 'svelte';
 	import { base } from '$app/paths';
 	import BowlScene from '$lib/BowlScene.svelte';
-	import { addEvent, getEvents, getPets, getSchedules, isValidBackup, isValidCareAmount, saveEvents, savePets, saveSchedules, setDataScope, todayMeals } from '$lib/store';
+	import { addEvent, getEvents, getPets, getSchedules, isValidBackup, isValidCareAmount, parseOptionalAmount, saveEvents, savePets, saveSchedules, setDataScope, todayMeals } from '$lib/store';
 	import { careIcons, careLabels, type CareEvent, type CareKind, type CareSchedule, type Pet } from '$lib/types';
 	import { supabaseClient } from '$lib/supabase';
 	import { PUBLIC_VAPID_KEY } from '$env/static/public';
@@ -20,7 +20,7 @@
 	let editingEventId = $state('');
 	let settingsPanel = $state<'profile' | 'add-pet' | 'auth' | ''>('');
 	let toast = $state('');
-	let amount = $state('');
+	let amount = $state<string | number | undefined>('');
 	let label = $state('');
 	let note = $state('');
 	let authEmail = $state('');
@@ -46,7 +46,7 @@
 	let scheduleTime = $state('08:00');
 	let scheduleKind = $state<CareKind>('meal');
 	let petBirthday = $state('');
-	let petWeight = $state('');
+	let petWeight = $state<string | number | undefined>('');
 	let petAllergies = $state('');
 	let petHealthNotes = $state('');
 	let fileInput = $state<HTMLInputElement>();
@@ -133,7 +133,7 @@
 	async function saveCare() {
 		if (!sheetKind || !activePet) return;
 		if (!isValidCareAmount(sheetKind, amount)) { notify('Проверьте допустимое количество'); return; }
-		const savedAmount = amount.trim() ? Number(amount) : undefined;
+		const savedAmount = parseOptionalAmount(amount);
 		if (editingEventId) {
 			const original = events.find((event) => event.id === editingEventId);
 			if (!original) return;
@@ -254,7 +254,7 @@
 		if (!name) { notify('Укажите имя собаки'); return; }
 		if (!isValidCareAmount('weight', petWeight)) { notify('Вес должен быть от 0,1 до 200 кг'); return; }
 		if (petBirthday && (Number.isNaN(Date.parse(petBirthday)) || petBirthday > new Date().toLocaleDateString('en-CA'))) { notify('Дата рождения не может быть в будущем'); return; }
-		const pet: Pet = { id: crypto.randomUUID(), name, breed: document.querySelector<HTMLInputElement>('#pet-breed')?.value.trim() || 'Порода не указана', birthday: petBirthday, weightKg: petWeight.trim() ? Number(petWeight) : 0, allergies: petAllergies.trim(), healthNotes: petHealthNotes.trim() };
+		const pet: Pet = { id: crypto.randomUUID(), name, breed: document.querySelector<HTMLInputElement>('#pet-breed')?.value.trim() || 'Порода не указана', birthday: petBirthday, weightKg: parseOptionalAmount(petWeight) ?? 0, allergies: petAllergies.trim(), healthNotes: petHealthNotes.trim() };
 		if (supabase && familyId) {
 			void supabase.from('pets').insert({ family_id: familyId, name: pet.name, breed: pet.breed, birthday: pet.birthday || null, allergies: pet.allergies, health_notes: pet.healthNotes }).select('id').single().then(({ data, error }) => {
 				if (error || !data) { notify('Не удалось добавить собаку в семейный профиль'); return; }

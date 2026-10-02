@@ -41,14 +41,19 @@ export function todayMeals(events: CareEvent[], petId: string, now = new Date())
 	return events.filter((event) => event.petId === petId && event.kind === 'meal' && new Date(event.occurredAt).getTime() >= start);
 }
 
-export function isValidCareAmount(kind: CareKind, value: string) {
-	if (!value.trim()) return true;
-	const amount = Number(value);
+export function isValidCareAmount(kind: CareKind, value: string | number | undefined) {
+	if (value === undefined || (typeof value === 'string' && !value.trim())) return true;
+	const amount = typeof value === 'number' ? value : Number(value.trim());
 	if (!Number.isFinite(amount)) return false;
 	if (kind === 'meal') return Number.isInteger(amount) && amount >= 1 && amount <= 5000;
 	if (kind === 'walk') return Number.isInteger(amount) && amount >= 1 && amount <= 600;
 	if (kind === 'weight') return Number.isInteger(amount * 10) && amount >= 0.1 && amount <= 200;
 	return false;
+}
+
+export function parseOptionalAmount(value: string | number | undefined) {
+	if (value === undefined || (typeof value === 'string' && !value.trim())) return undefined;
+	return typeof value === 'number' ? value : Number(value.trim());
 }
 
 export function isValidBackup(value: unknown): value is { pets: Pet[]; events: CareEvent[]; schedules: CareSchedule[] } {

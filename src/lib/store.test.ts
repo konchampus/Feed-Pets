@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { addEvent, getEvents, isValidBackup, isValidCareAmount, saveEvents, setDataScope, todayMeals } from './store';
+import { addEvent, getEvents, isValidBackup, isValidCareAmount, parseOptionalAmount, saveEvents, setDataScope, todayMeals } from './store';
 import type { CareEvent } from './types';
 
 afterEach(() => { localStorage.clear(); setDataScope('local'); vi.useRealTimers(); vi.unstubAllGlobals(); });
@@ -16,6 +16,16 @@ describe('care journal storage', () => {
 		expect(isValidCareAmount('weight', '201')).toBe(false);
 		expect(isValidCareAmount('water', '5')).toBe(false);
 		expect(isValidCareAmount('meal', '')).toBe(true);
+		expect(isValidCareAmount('meal', 80)).toBe(true);
+		expect(isValidCareAmount('meal', 0)).toBe(false);
+		expect(isValidCareAmount('walk', 30)).toBe(true);
+		expect(isValidCareAmount('weight', 12.3)).toBe(true);
+		expect(isValidCareAmount('weight', 12.34)).toBe(false);
+		expect(isValidCareAmount('meal', undefined)).toBe(true);
+		expect(parseOptionalAmount('')).toBeUndefined();
+		expect(parseOptionalAmount(undefined)).toBeUndefined();
+		expect(parseOptionalAmount('80')).toBe(80);
+		expect(parseOptionalAmount(80)).toBe(80);
 	});
 
 	it('accepts a complete backup and rejects malformed or unrelated records', () => {
