@@ -34,7 +34,7 @@ npm run dev
    Сгенерируйте VAPID пару в терминале: `npx --yes web-push generate-vapid-keys --json`. Значение `publicKey` добавьте как GitHub Actions secret `PUBLIC_VAPID_KEY` и Supabase Edge secret `VAPID_PUBLIC_KEY`; `privateKey` — только как `VAPID_PRIVATE_KEY`. Задайте `VAPID_SUBJECT` как `mailto:<ваш адрес>` и создайте случайный длинный `CRON_SECRET`. Ключи не присылайте в чат.
 
    Service role, SMTP App Password, OAuth client secrets, `VAPID_PRIVATE_KEY` и `CRON_SECRET` нельзя класть в исходники, коммиты или GitHub variables. Никогда не используйте `service_role` в браузере.
-8. Миграция включает `care_events` в публикацию `supabase_realtime`. Для расписания включите расширения `pg_cron` и `pg_net`, сохраните то же значение `CRON_SECRET` в Database → Vault под именем `CRON_SECRET` и выполните в SQL Editor, заменив `<project-ref>` на ref проекта:
+8. Миграции включают `care_events` и `pets` в публикацию `supabase_realtime`: события ухода и изменения профиля сразу приходят в открытые семейные устройства. Для расписания включите расширения `pg_cron` и `pg_net`, сохраните то же значение `CRON_SECRET` в Database → Vault под именем `CRON_SECRET` и выполните в SQL Editor, заменив `<project-ref>` на ref проекта:
 
    ```sql
    select cron.schedule(

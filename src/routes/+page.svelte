@@ -18,7 +18,8 @@
 	let member = $state('Я');
 	let sheetKind = $state<CareKind | null>(null);
 	let editingEventId = $state('');
-	let settingsPanel = $state<'profile' | 'add-pet' | 'auth' | ''>('');
+	let settingsPanel = $state<'profile' | 'add-pet' | 'edit-pet' | 'auth' | ''>('');
+	let editingPetId = $state('');
 	let toast = $state('');
 	let amount = $state<string | number | undefined>('');
 	let label = $state('');
@@ -46,6 +47,8 @@
 	let scheduleTime = $state('08:00');
 	let scheduleKind = $state<CareKind>('meal');
 	let petBirthday = $state('');
+	let petName = $state('');
+	let petBreed = $state('');
 	let petWeight = $state<string | number | undefined>('');
 	let petAllergies = $state('');
 	let petHealthNotes = $state('');
@@ -208,10 +211,26 @@
 		schedules = (scheduleResult.data ?? []).map((row) => ({ id: row.id, petId: row.pet_id, kind: row.kind, title: row.title, time: String(row.local_time).slice(0, 5), days: row.weekdays, enabled: row.is_active }));
 		saveSchedules(schedules);
 		if (familyChannel) void supabase.removeChannel(familyChannel);
-		familyChannel = supabase.channel(`family:${familyId}`).on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'care_events', filter: `family_id=eq.${familyId}` }, (change) => {
+		familyChannel = supabase.channel(`family:${familyId}`)
+			.on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'pets', filter: `family_id=eq.${familyId}` }, (change) => {
+				const row = change.new as { id: string; name: string; breed: string; birthday: string | null; photo_url: string | null; allergies: string; health_notes: string };
+				pets = pets.map((pet) => pet.id === row.id ? { ...pet, name: row.name, breed: row.breed, birthday: row.birthday ?? '', photo: row.photo_url ?? undefined, allergies: row.allergies, healthNotes: row.health_notes } : pet);
+				savePets(pets);
+			})
+			.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'care_events', filter: `family_id=eq.${familyId}` }, (change) => {
 			const row = change.new as { id: string; pet_id: string; kind: CareKind; occurred_at: string; author_id: string; actor_name: string; amount: number | null; unit: string | null; label: string | null; note: string | null };
 			if (events.some((item) => item.id === row.id)) return;
-			updateEvents([{ id: row.id, petId: row.pet_id, kind: row.kind, occurredAt: row.occurred_at, authorId: row.author_id, by: row.actor_name, amount: row.amount ? Number(row.amount) : undefined, unit: row.unit ?? undefined, label: row.label ?? undefined, note: row.note ?? undefined }, ...events]);
+			const newEvent: CareEvent = { id: row.id, petId: row.pet_id, kind: row.kind, occurredAt: row.occurred_at, authorId: row.author_id, by: row.actor_name, amount: row.amount ? Number(row.amount) : undefined, unit: row.unit ?? undefined, label: row.label ?? undefined, note: row.note ?? undefined };
+			const nextEvents = [newEvent, ...events];
+			updateEvents(nextEvents);
+			if (newEvent.kind === 'weight' && newEvent.amount) {
+				const latestWeight = nextEvents.filter((event) => event.petId === row.pet_id && event.kind === 'weight').reduce<CareEvent | undefined>((latest, event) => !latest || event.occurredAt > latest.occurredAt ? event : latest, undefined);
+				const latestAmount = latestWeight?.amount;
+				if (latestAmount) {
+					pets = pets.map((pet) => pet.id === row.pet_id ? { ...pet, weightKg: latestAmount } : pet);
+					savePets(pets);
+				}
+			}
 		}).subscribe();
 	}
 	async function setupFamily() {
@@ -264,17 +283,17 @@
 	function addPet() {
 		if (supabase && familyId && familyRole !== 'owner') { notify('Профили собак меняет владелец семьи'); return; }
 		if (supabase && cloudUser && !familyId) { notify('Сначала создайте семейный профиль'); return; }
-		const name = (document.querySelector<HTMLInputElement>('#pet-name')?.value ?? '').trim();
+		const name = petName.trim();
 		if (!name) { notify('Укажите имя собаки'); return; }
 		if (!isValidCareAmount('weight', petWeight)) { notify('Вес должен быть от 0,1 до 200 кг'); return; }
 		if (petBirthday && (Number.isNaN(Date.parse(petBirthday)) || petBirthday > new Date().toLocaleDateString('en-CA'))) { notify('Дата рождения не может быть в будущем'); return; }
 		const petId = crypto.randomUUID();
-		const pet: Pet = { id: petId, name, breed: document.querySelector<HTMLInputElement>('#pet-breed')?.value.trim() || 'Порода не указана', birthday: petBirthday, weightKg: parseOptionalAmount(petWeight) ?? 0, allergies: petAllergies.trim(), healthNotes: petHealthNotes.trim() };
+		const pet: Pet = { id: petId, name, breed: petBreed.trim() || 'Порода не указана', birthday: petBirthday, weightKg: parseOptionalAmount(petWeight) ?? 0, allergies: petAllergies.trim(), healthNotes: petHealthNotes.trim() };
 		if (supabase && familyId) {
 			void supabase.from('pets').insert({ family_id: familyId, name: pet.name, breed: pet.breed, birthday: pet.birthday || null, allergies: pet.allergies, health_notes: pet.healthNotes }).select('id').single().then(({ data, error }) => {
 				if (error || !data) { notify('Не удалось добавить собаку в семейный профиль'); return; }
 				if (pet.weightKg) void supabase?.from('care_events').insert({ pet_id: data.id, family_id: familyId, kind: 'weight', amount: pet.weightKg, unit: 'кг', actor_name: member });
-				pets = [...pets, { ...pet, id: data.id }]; savePets(pets); petIndex = pets.length - 1; settingsPanel = ''; notify('Профиль собаки добавлен');
+				pets = [...pets, { ...pet, id: data.id }]; savePets(pets); petIndex = pets.length - 1; settingsPanel = ''; petName = ''; petBreed = ''; petBirthday = ''; petWeight = ''; petAllergies = ''; petHealthNotes = ''; notify('Профиль собаки добавлен');
 			});
 			return;
 		}
@@ -283,7 +302,51 @@
 			schedules = schedules.map((schedule) => schedule.petId === legacyStarterPetId ? { ...schedule, petId } : schedule);
 			saveEvents(events); saveSchedules(schedules);
 		}
-		pets = [...pets, pet]; savePets(pets); petIndex = pets.length - 1; settingsPanel = ''; petBirthday = ''; petWeight = ''; petAllergies = ''; petHealthNotes = ''; notify('Профиль собаки добавлен');
+		pets = [...pets, pet]; savePets(pets); petIndex = pets.length - 1; settingsPanel = ''; petName = ''; petBreed = ''; petBirthday = ''; petWeight = ''; petAllergies = ''; petHealthNotes = ''; notify('Профиль собаки добавлен');
+	}
+	function openPetEdit(pet: Pet) {
+		editingPetId = pet.id;
+		petName = pet.name;
+		petBreed = pet.breed;
+		petBirthday = pet.birthday;
+		petWeight = pet.weightKg || '';
+		petAllergies = pet.allergies;
+		petHealthNotes = pet.healthNotes;
+		settingsPanel = 'edit-pet';
+	}
+	async function savePetEdit() {
+		const pet = pets.find((item) => item.id === editingPetId);
+		if (!pet) return;
+		if (supabase && familyId && familyRole !== 'owner') { notify('Профили собак меняет владелец семьи'); return; }
+		const name = petName.trim();
+		if (!name) { notify('Укажите имя собаки'); return; }
+		if (!isValidCareAmount('weight', petWeight)) { notify('Вес должен быть от 0,1 до 200 кг'); return; }
+		if (petBirthday && (Number.isNaN(Date.parse(petBirthday)) || petBirthday > new Date().toLocaleDateString('en-CA'))) { notify('Дата рождения не может быть в будущем'); return; }
+		const enteredWeight = parseOptionalAmount(petWeight);
+		const updatedPet: Pet = {
+			...pet,
+			name,
+			breed: petBreed.trim() || 'Порода не указана',
+			birthday: petBirthday,
+			weightKg: enteredWeight ?? pet.weightKg,
+			allergies: petAllergies.trim(),
+			healthNotes: petHealthNotes.trim()
+		};
+		if (supabase && familyId) {
+			const { error } = await supabase.from('pets').update({ name: updatedPet.name, breed: updatedPet.breed, birthday: updatedPet.birthday || null, allergies: updatedPet.allergies, health_notes: updatedPet.healthNotes }).eq('id', pet.id);
+			if (error) { notify('Не удалось изменить профиль собаки'); return; }
+		}
+		pets = pets.map((item) => item.id === pet.id ? updatedPet : item);
+		savePets(pets);
+		if (enteredWeight && enteredWeight !== pet.weightKg) {
+			const weightEvent = addEvent({ petId: pet.id, kind: 'weight', by: member, authorId: currentUserId || undefined, amount: enteredWeight, unit: 'кг', label: 'Вес профиля' });
+			updateEvents(getEvents());
+			if (supabase && cloudUser) void syncEvent(weightEvent);
+		}
+		editingPetId = '';
+		settingsPanel = '';
+		petName = ''; petBreed = ''; petBirthday = ''; petWeight = ''; petAllergies = ''; petHealthNotes = '';
+		notify('Профиль собаки обновлён');
 	}
 	function transferLegacyData(petId: string) {
 		if (cloudUser || familyId) return;
@@ -570,7 +633,14 @@
 						<section class="settings-block">
 							<div class="settings-heading"><div><h2>Собаки</h2><p>Профили, которые ведёт ваша семья</p></div><span>🐾</span></div>
 							{#each pets as pet}
-								<div class="pet-settings-row"><div class="pet-initial">{pet.name.slice(0,1)}</div><div><strong>{pet.name}</strong><span>{pet.breed} · {pet.weightKg ? `${pet.weightKg} кг` : 'вес не указан'}</span></div>{#if pets.length > 1 && (!familyId || familyRole === 'owner')}<button aria-label={`Удалить профиль ${pet.name}`} onclick={() => void removePet(pet.id)}>×</button>{/if}</div>
+								<div class="pet-settings-row">
+									<div class="pet-initial">{pet.name.slice(0,1)}</div>
+									<div><strong>{pet.name}</strong><span>{pet.breed} · {pet.weightKg ? `${pet.weightKg} кг` : 'вес не указан'}</span></div>
+									{#if !cloudUser || familyRole === 'owner'}
+										<button aria-label={`Изменить профиль ${pet.name}`} onclick={() => openPetEdit(pet)}>✎</button>
+										{#if pets.length > 1}<button aria-label={`Удалить профиль ${pet.name}`} onclick={() => void removePet(pet.id)}>×</button>{/if}
+									{/if}
+								</div>
 							{/each}
 							{#if !cloudUser && !familyId && (legacyCareCount || legacyScheduleCount)}
 								<div class="legacy-transfer">
@@ -578,7 +648,27 @@
 									{#each pets as pet}<button class="secondary-button" onclick={() => transferLegacyData(pet.id)}>Перенести данные к {pet.name}</button>{/each}
 								</div>
 							{/if}
-							{#if !cloudUser || familyRole === 'owner'}<button class="add-row" onclick={() => settingsPanel = settingsPanel === 'add-pet' ? '' : 'add-pet'}>＋ Добавить собаку</button>{#if settingsPanel === 'add-pet'}<div class="inline-form"><label for="pet-name">Имя</label><input id="pet-name" placeholder="Как зовут собаку?" /><label for="pet-breed">Порода</label><input id="pet-breed" placeholder="Порода" /><label for="pet-birthday">Дата рождения</label><input id="pet-birthday" type="date" bind:value={petBirthday} /><label for="pet-weight">Текущий вес</label><input id="pet-weight" type="number" min="0.1" max="200" step="0.1" bind:value={petWeight} placeholder="кг" /><label for="pet-allergies">Аллергии</label><input id="pet-allergies" bind:value={petAllergies} placeholder="Если есть" /><label for="pet-health">Заметки о здоровье</label><textarea id="pet-health" bind:value={petHealthNotes} rows="2" placeholder="Что важно помнить семье"></textarea><button class="primary-button" onclick={addPet}>Добавить профиль</button></div>{/if}{/if}
+							{#if !cloudUser || familyRole === 'owner'}
+								<button class="add-row" onclick={() => {
+									if (settingsPanel !== 'add-pet') {
+										editingPetId = ''; petName = ''; petBreed = ''; petBirthday = ''; petWeight = ''; petAllergies = ''; petHealthNotes = '';
+									}
+									settingsPanel = settingsPanel === 'add-pet' ? '' : 'add-pet';
+								}}>＋ Добавить собаку</button>
+								{#if settingsPanel === 'add-pet' || settingsPanel === 'edit-pet'}
+									<div class="inline-form">
+										{#if editingPetId}<h3>Профиль: {pets.find((pet) => pet.id === editingPetId)?.name}</h3>{/if}
+										<label for="pet-name">Имя</label><input id="pet-name" bind:value={petName} maxlength="80" placeholder="Как зовут собаку?" />
+										<label for="pet-breed">Порода</label><input id="pet-breed" bind:value={petBreed} maxlength="100" placeholder="Порода" />
+										<label for="pet-birthday">Дата рождения</label><input id="pet-birthday" type="date" bind:value={petBirthday} />
+										<label for="pet-weight">Вес, кг</label><input id="pet-weight" type="number" min="0.1" max="200" step="0.1" bind:value={petWeight} placeholder="кг" />
+										<label for="pet-allergies">Аллергии</label><input id="pet-allergies" bind:value={petAllergies} maxlength="500" placeholder="Если есть" />
+										<label for="pet-health">Заметки о здоровье</label><textarea id="pet-health" bind:value={petHealthNotes} maxlength="2000" rows="2" placeholder="Что важно помнить семье"></textarea>
+										{#if editingPetId}<p class="fine-print">Новый вес добавится отдельной записью. Пустое поле не удаляет старые измерения.</p><button class="primary-button" onclick={() => void savePetEdit()}>Сохранить изменения</button>{:else}<button class="primary-button" onclick={addPet}>Добавить профиль</button>{/if}
+										{#if editingPetId}<button class="quiet-button" onclick={() => { editingPetId = ''; settingsPanel = ''; }}>Отмена</button>{/if}
+									</div>
+								{/if}
+							{/if}
 						</section>
 						<section class="settings-block"><div class="settings-heading"><div><h2>Ваши напоминания</h2><p>{pushEnabled ? 'Уведомления включены на этом устройстве.' : 'Нужны для событий семьи и расписания.'}</p></div><span>♧</span></div>{#if isConfigured}{#if familyId}<button class="secondary-button" onclick={() => pushEnabled ? void disablePush() : void enablePush()}>{pushEnabled ? 'Отключить уведомления' : 'Включить уведомления'}</button>{:else}<button class="secondary-button" onclick={() => { tab = 'settings'; settingsPanel = cloudUser ? 'profile' : 'auth'; }}>{cloudUser ? 'Создать семейный профиль' : 'Войти в семейный профиль'}</button>{/if}{:else}<p class="fine-print">Push пока не настроен. Нужны проект Supabase и ключ VAPID; шаги есть в README репозитория.</p>{/if}<p class="fine-print">На iPhone откройте сайт в Safari, добавьте его на экран «Домой» и включите уведомления внутри установленного PWA.</p></section>
 					</div><aside class="settings-side"><section class="settings-block"><div class="settings-heading"><div><h2>Внешний вид</h2><p>Легко для глаз и устройства</p></div><span>◐</span></div><label class="setting-toggle"><span>3D-миска</span><input type="checkbox" bind:checked={scene} /><i></i></label><label class="setting-toggle"><span>Звук отметки</span><input type="checkbox" bind:checked={soundEnabled} onchange={() => localStorage.setItem('lapki:sound', String(soundEnabled))} /><i></i></label><label class="setting-toggle"><span>Уменьшить анимацию</span><input type="checkbox" bind:checked={reducedMotion} onchange={() => localStorage.setItem('lapki:reduced-motion', String(reducedMotion))} /><i></i></label></section><section class="settings-block"><div class="settings-heading"><div><h2>Копия данных</h2><p>Храните свои записи в безопасности</p></div><span>↧</span></div><button class="secondary-button" onclick={exportData}>Скачать резервную копию</button><button class="quiet-button" disabled={Boolean(supabase && familyId)} onclick={importData}>Восстановить из файла</button><input bind:this={fileInput} class="sr-only" type="file" accept="application/json" onchange={readBackup} /><p class="fine-print">{supabase && familyId ? 'Восстановление доступно в локальном режиме.' : 'На бесплатном тарифе Supabase нет автоматических резервных копий.'}</p></section><section class="settings-block info-block"><p class="overline">ПРИВАТНОСТЬ</p><p>Локальные данные остаются в этом браузере. Общий доступ появляется после подключения Supabase; записи защищены политиками доступа семьи.</p><a href="https://supabase.com/docs/guides/platform/free" target="_blank" rel="noreferrer">О бесплатном тарифе Supabase ↗</a></section></aside></div>

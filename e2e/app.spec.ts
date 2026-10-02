@@ -50,6 +50,20 @@ test('starts without a sample dog and lets the family add its own profile', asyn
 	await expect(page.getByText('Профиль собаки добавлен')).toBeVisible();
 	await page.getByRole('button', { name: 'Главная', exact: true }).click();
 	await expect(page.getByRole('heading', { name: 'День Рада' })).toBeVisible();
+	await page.getByRole('button', { name: 'Настройки', exact: true }).click();
+	await page.getByRole('button', { name: 'Изменить профиль Рада', exact: true }).click();
+	await page.locator('#pet-name').fill('Рада дома');
+	await page.locator('#pet-health').fill('Чувствительность к курице');
+	await page.locator('#pet-weight').fill('12.4');
+	await page.getByRole('button', { name: 'Сохранить изменения', exact: true }).click();
+	await expect(page.getByRole('status')).toHaveText('Профиль собаки обновлён');
+	await page.getByRole('button', { name: 'Главная', exact: true }).click();
+	await expect(page.getByRole('heading', { name: 'День Рада дома' })).toBeVisible();
+	await page.getByRole('button', { name: 'История', exact: true }).click();
+	await expect(page.getByText('Вес · 12.4 кг', { exact: true })).toBeVisible();
+	await page.reload();
+	await expect(page.locator('.app-shell')).toHaveAttribute('data-ready', 'true');
+	await expect(page.getByRole('heading', { name: 'День Рада дома' })).toBeVisible();
 });
 
 test('first dog setup works on a narrow screen', async ({ page }) => {
@@ -64,6 +78,42 @@ test('first dog setup works on a narrow screen', async ({ page }) => {
 	await page.getByRole('button', { name: 'Добавить профиль' }).click();
 	await page.getByRole('button', { name: 'Главная', exact: true }).click();
 	await expect(page.getByRole('heading', { name: 'День Рада' })).toBeVisible();
+	await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+	await page.getByRole('button', { name: 'Настройки', exact: true }).click();
+	const editButton = page.getByRole('button', { name: 'Изменить профиль Рада', exact: true });
+	const editButtonSize = await editButton.evaluate((button) => {
+		const { width, height } = button.getBoundingClientRect();
+		return { width, height };
+	});
+	expect(editButtonSize.width).toBeGreaterThanOrEqual(44);
+	expect(editButtonSize.height).toBeGreaterThanOrEqual(44);
+	await editButton.click();
+	await expect(page.getByRole('heading', { name: 'Профиль: Рада' })).toBeVisible();
+	const cancelButtonSize = await page.getByRole('button', { name: 'Отмена' }).evaluate((button) => {
+		const { width, height } = button.getBoundingClientRect();
+		return { width, height };
+	});
+	expect(cancelButtonSize.width).toBeGreaterThanOrEqual(44);
+	expect(cancelButtonSize.height).toBeGreaterThanOrEqual(44);
+	await page.locator('#pet-name').fill('ОченьДлинноеИмяСобаки'.repeat(4).slice(0, 80));
+	await page.locator('#pet-breed').fill('ПородаБезПробелов'.repeat(6).slice(0, 100));
+	await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+	await page.locator('#pet-name').fill('Рада');
+	await page.locator('#pet-breed').fill('Метис');
+	await page.locator('#pet-weight').fill('200.1');
+	const saveButton = page.getByRole('button', { name: 'Сохранить изменения' });
+	const saveButtonSize = await saveButton.evaluate((button) => {
+		const { width, height } = button.getBoundingClientRect();
+		return { width, height };
+	});
+	expect(saveButtonSize.height).toBeGreaterThanOrEqual(44);
+	await saveButton.click();
+	await expect(page.getByRole('status')).toHaveText('Вес должен быть от 0,1 до 200 кг');
+	await page.locator('#pet-weight').fill('12.4');
+	await page.getByRole('button', { name: 'Сохранить изменения' }).click();
+	await expect(page.getByRole('status')).toHaveText('Профиль собаки обновлён');
+	await page.getByRole('button', { name: 'История', exact: true }).click();
+	await expect(page.getByText('Вес · 12.4 кг', { exact: true })).toBeVisible();
 	await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 

@@ -158,10 +158,11 @@ textarea { padding-top: 10px; resize: vertical; }
 .settings-heading > span { color: var(--leaf); font: 22px var(--serif); }
 .pet-settings-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-top: 1px solid #efeee6; }
 .pet-settings-avatar { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: #e6e9d6; color: var(--leaf); font: 700 15px var(--serif); }
-.pet-settings-row > div:nth-child(2) { flex: 1; display: grid; gap: 3px; }
+.pet-settings-row > div:nth-child(2) { min-width: 0; flex: 1; display: grid; gap: 3px; overflow-wrap: anywhere; }
 .pet-settings-row strong { font-size: 12px; }
 .pet-settings-row span { color: var(--muted); font-size: 10px; }
 .pet-settings-row button, .quiet-button { border: 0; background: transparent; color: var(--muted); }
+.pet-settings-row button { flex: 0 0 44px; width: 44px; min-height: 44px; border-radius: 8px; }
 .add-row { display: block; margin-top: 10px; padding: 10px 0 0; border: 0; background: transparent; color: var(--leaf); font-size: 11px; font-weight: 600; }
 .setting-toggle { display: flex; align-items: center; justify-content: space-between; min-height: 45px; border-top: 1px solid #efeee6; color: #50594b; font-size: 12px; }
 .setting-toggle input { position: absolute; opacity: 0; width: 1px; height: 1px; }
@@ -171,11 +172,12 @@ textarea { padding-top: 10px; resize: vertical; }
 .setting-toggle input:checked + i::after { transform: translateX(14px); }
 .setting-toggle input:focus-visible + i { outline: 3px solid #839a66; outline-offset: 3px; }
 .fine-print { margin: 11px 0 0; color: var(--muted); font-size: 10px; line-height: 1.5; }
-.quiet-button { display: block; margin-top: 12px; padding: 0; color: var(--leaf); font-size: 11px; font-weight: 600; }
+.quiet-button { display: block; min-height: 44px; margin-top: 12px; padding: 8px; color: var(--leaf); font-size: 11px; font-weight: 600; }
 .info-block { background: #eff0e2; }
 .info-block > p:not(.overline) { margin: 0 0 12px; color: #59624e; font-size: 11px; line-height: 1.5; }
 .info-block a { color: var(--leaf); font-size: 11px; font-weight: 600; }
 .auth-form, .inline-form { display: grid; gap: 8px; margin-top: 17px; padding-top: 16px; border-top: 1px solid #efeee6; }
+.inline-form .primary-button { min-height: 44px; }
 .mode-switch { display: flex; gap: 5px; margin-bottom: 6px; padding: 4px; border-radius: 9px; background: #f0f0e7; }
 .mode-switch button { flex: 1; min-height: 32px; border: 0; border-radius: 7px; background: transparent; color: var(--muted); font-size: 11px; }
 .mode-switch button.active { background: white; color: var(--leaf-dark); box-shadow: 0 1px 4px #242d2412; }
