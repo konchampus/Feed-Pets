@@ -1,9 +1,6 @@
 import type { CareEvent, CareKind, CareSchedule, Pet } from './types';
 
-const samplePet: Pet = {
-	id: 'milo', name: 'Мило', breed: 'Корги', birthday: '2022-04-16', weightKg: 12.4,
-	allergies: '', healthNotes: ''
-};
+export const legacyStarterPetId = 'milo';
 
 let dataScope = 'local';
 
@@ -21,7 +18,17 @@ function write<T>(key: string, value: T) {
 	if (typeof localStorage !== 'undefined') localStorage.setItem(dataScope === 'local' ? `lapki:${key}` : `lapki:${dataScope}:${key}`, JSON.stringify(value));
 }
 
-export function getPets(): Pet[] { return read('pets', [samplePet]); }
+function isLegacyStarterPet(pet: Pet) {
+	return pet.id === legacyStarterPetId && pet.name === 'Мило' && pet.breed === 'Корги'
+		&& pet.birthday === '2022-04-16' && pet.weightKg === 12.4 && !pet.allergies && !pet.healthNotes;
+}
+
+export function getPets(): Pet[] {
+	const pets = read('pets', []);
+	const savedPets = pets.filter((pet) => !isLegacyStarterPet(pet));
+	if (savedPets.length !== pets.length) savePets(savedPets);
+	return savedPets;
+}
 export function savePets(pets: Pet[]) { write('pets', pets); }
 export function getEvents(): CareEvent[] { return read('events', []); }
 export function saveEvents(events: CareEvent[]) { write('events', events); }

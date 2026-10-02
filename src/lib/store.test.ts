@@ -1,10 +1,21 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { addEvent, getEvents, isValidBackup, isValidCareAmount, parseOptionalAmount, saveEvents, setDataScope, todayMeals } from './store';
-import type { CareEvent } from './types';
+import { addEvent, getEvents, getPets, isValidBackup, isValidCareAmount, legacyStarterPetId, parseOptionalAmount, saveEvents, savePets, setDataScope, todayMeals } from './store';
+import type { CareEvent, Pet } from './types';
 
 afterEach(() => { localStorage.clear(); setDataScope('local'); vi.useRealTimers(); vi.unstubAllGlobals(); });
 
 describe('care journal storage', () => {
+	it('starts without a sample dog', () => {
+		expect(getPets()).toEqual([]);
+	});
+	it('removes the old starter profile and keeps real dog profiles', () => {
+		const legacyPet: Pet = { id: legacyStarterPetId, name: 'Мило', breed: 'Корги', birthday: '2022-04-16', weightKg: 12.4, allergies: '', healthNotes: '' };
+		const familyPet: Pet = { id: 'family-dog', name: 'Рада', breed: 'Метис', birthday: '', weightKg: 0, allergies: '', healthNotes: '' };
+		savePets([legacyPet, familyPet]);
+		expect(getPets()).toEqual([familyPet]);
+		expect(JSON.parse(localStorage.getItem('lapki:pets') ?? '[]')).toEqual([familyPet]);
+	});
+
 	it('checks care amounts against the limits used by each form', () => {
 		expect(isValidCareAmount('meal', '1')).toBe(true);
 		expect(isValidCareAmount('meal', '5000')).toBe(true);

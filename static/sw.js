@@ -1,4 +1,4 @@
-const CACHE = 'lapki-shell-v1';
+const CACHE = 'lapki-shell-v2';
 const CORE = ['./', './manifest.webmanifest', './paw.svg'];
 self.addEventListener('install', (event) => {
 	event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(CORE)).then(() => self.skipWaiting()));
