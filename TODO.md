@@ -13,12 +13,11 @@
 - [x] Валидировать числовые значения и резервную копию до сохранения; вернуть фокус из диалога и добавить клавиатурное управление.
 - [x] Не создавать username bucket после превышения IP лимита; очищать неактивные login buckets ограниченными пачками.
 - [x] Добавить unit/e2e сценарии и CI для Pages.
-- [ ] Повторно проверить офлайн E2E в GitHub Actions после исправления ожидания service worker cache.
+- [x] Проверить офлайн E2E после исправления service worker cache (run `37022855403`, commit `d6e56f6`).
 - [x] Проверить синтаксис TypeScript Edge Functions и модулей, JSON/YAML и отсутствие ключей в исходниках.
 - [ ] Установить зависимости локально; повторный `npm install --strict-ssl=true --fetch-retries=0` завершился `ERR_SSL_WRONG_VERSION_NUMBER`. TLS-проверки не ослаблять.
 - [ ] Создать и проверить `package-lock.json`, не меняя npm TLS-проверки.
-- [x] В GitHub Actions проверить `npm run check`, unit tests, Playwright E2E и `npm run build` (run `37017681400`, commit `0e62825`): все build/deploy шаги прошли.
-- [ ] Починить новый офлайн E2E: run `37021805559` показал, что приложение ещё не гидратировано (`data-ready=false`) после offline reload; cache writes теперь завершаются до ответа service worker.
+- [x] В GitHub Actions проверить `npm run check`, unit tests, Playwright E2E и `npm run build` (run `37022855403`, commit `d6e56f6`): все проверки, включая offline reload, Configure Pages и deploy, прошли.
 - [x] Проверить GitHub Pages после настройки: repo metadata `has_pages: true`; run `37017681400` завершил Configure Pages и deploy успешно.
 - [x] Вынести `prerender = true` в `src/routes/+page.ts` и проверять в CI непустой `build/index.html`.
 - [x] Проверить опубликованную главную: HTTP 200; manifest, service worker и все найденные JS/CSS assets тоже отвечают HTTP 200.
