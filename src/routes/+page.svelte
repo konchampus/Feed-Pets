@@ -1,4 +1,6 @@
 <script lang="ts">
+	export const prerender = true;
+
 	import { onMount, tick } from 'svelte';
 	import { base } from '$app/paths';
 	import BowlScene from '$lib/BowlScene.svelte';

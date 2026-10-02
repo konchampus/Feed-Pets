@@ -17,9 +17,9 @@
 - [ ] Установить зависимости локально; npm Registry отвечает `ERR_SSL_WRONG_VERSION_NUMBER`. TLS-проверки не ослаблять.
 - [ ] Создать и проверить `package-lock.json`, не меняя npm TLS-проверки.
 - [x] В GitHub Actions проверить `npm run check`, unit tests, Playwright E2E и `npm run build` (run `36962457746`, commit `4deec12`): все шаги build job прошли.
-- [x] Проверить GitHub Actions после отправки коммитов: проверки приложения проходят; Pages deploy ожидает настройки репозитория.
-- [ ] Включить GitHub Pages в `Settings → Pages → Build and deployment → Source: GitHub Actions` и проверить повторную публикацию. В run `36962457746` `Configure GitHub Pages` вернул `Get Pages site failed: Not Found`; deploy пропущен, API и публичный адрес возвращают 404.
-- [ ] Двумя независимыми агентами пройти опубликованный сайт реальными кликами на desktop и узком мобильном viewport. Оба агента попробовали открыть страницу, но их браузерный инструмент сообщил `Browser is not available`; клики по приложению не выполнены. Повторить после включения Pages и появления браузерного доступа.
+- [x] Проверить GitHub Actions после настройки Pages: runs `36962457746` и `36962952950` завершили build, Configure GitHub Pages и deploy успешно.
+- [ ] Создать `index.html` для корня статической публикации и проверить, что `https://konchampus.github.io/Feed-Pets/` отвечает HTTP 200. Сейчас GitHub Pages отдаёт приложение из `404.html` со статусом 404.
+- [ ] Двумя независимыми агентами пройти опубликованный сайт реальными кликами на desktop и узком мобильном viewport. Оба агента независимо попробовали открыть страницу, но браузерный мост Codex вернул `nodeRepl.fetch request failed`; клики по приложению не выполнены. Повторить после восстановления браузерного доступа.
 - [ ] Проверить, что обе семьи видят только свои записи; участник исправляет только свои записи, владелец управляет собакой и расписанием.
 - [ ] Проверить RLS и миграции на чистом Supabase-проекте; исходники независимо просмотрены, выполнение на живом backend не проверено.
 - [x] Завершить независимый аудит исходников по RLS, приглашениям, авторизации и push; живой backend не подключён и запросами не проверен.
@@ -28,7 +28,7 @@
 
 - [ ] Создать Supabase-проект и применить миграции по порядку.
 - [ ] Добавить публичные GitHub Actions Secrets: `PUBLIC_SUPABASE_URL`, `PUBLIC_SUPABASE_ANON_KEY`, `PUBLIC_VAPID_KEY`.
-- [ ] Настроить GitHub Pages → GitHub Actions и проверить Pages deploy (run `36962457746`: Pages не настроен, deploy был пропущен; страница пока отсутствует).
+- [x] Настроить GitHub Pages → GitHub Actions и выполнить deploy (runs `36962457746` и `36962952950` успешны); проверить HTTP 200 главной после добавления prerender.
 - [ ] Настроить Supabase Site URL/redirect URL с путём репозитория.
 - [ ] Настроить отдельный Gmail SMTP с App Password в Supabase и проверить письмо подтверждения/восстановления.
 - [ ] Создать Google OAuth client и добавить credentials в Supabase.
