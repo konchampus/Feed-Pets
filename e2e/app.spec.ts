@@ -121,11 +121,13 @@ test('loads the cached journal and records care while offline', async ({ page, c
 	await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller)), { timeout: 15000 }).toBe(true);
 	await page.reload();
 	await expect(page.getByRole('heading', { name: /привет, семья/i })).toBeVisible();
+	await expect(page.locator('.app-shell')).toHaveAttribute('data-ready', 'true');
 
 	await context.setOffline(true);
 	try {
 		await page.reload();
 		await expect(page.getByRole('heading', { name: /привет, семья/i })).toBeVisible();
+		await expect(page.locator('.app-shell')).toHaveAttribute('data-ready', 'true');
 		await recordMeal(page, '55');
 		await expect(page.getByText('Кормление · 55 г', { exact: true })).toBeVisible();
 	} finally {
