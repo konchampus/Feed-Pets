@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { checkLoginRateLimit } from '../_shared/login-rate-limit.ts';
 
 const corsHeaders = {
 	'Access-Control-Allow-Origin': '*',
@@ -28,16 +29,14 @@ Deno.serve(async (request) => {
 		const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } });
 		const forwardedIps = request.headers.get('x-forwarded-for')?.split(',').map((ip) => ip.trim()) ?? [];
 		const clientIp = request.headers.get('cf-connecting-ip') ?? request.headers.get('x-real-ip') ?? forwardedIps.at(-1) ?? '';
+		const ipBucket = await hashValue(`ip:${clientIp}`);
 		const usernameBucket = await hashValue(`${clientIp}:${username.toLowerCase()}`);
-		const { data: usernameAllowed, error: usernameLimitError } = await admin.rpc('consume_login_attempt', { attempt_hash: usernameBucket, max_attempts: 10 });
-		if (usernameLimitError) return Response.json({ error: 'Login is temporarily unavailable' }, { status: 503, headers: jsonHeaders });
-		if (!usernameAllowed) return Response.json({ error: 'Too many attempts. Try again in 15 minutes.' }, { status: 429, headers: jsonHeaders });
-		if (clientIp) {
-			const ipBucket = await hashValue(`ip:${clientIp}`);
-			const { data: ipAllowed, error: ipLimitError } = await admin.rpc('consume_login_attempt', { attempt_hash: ipBucket, max_attempts: 50 });
-			if (ipLimitError) return Response.json({ error: 'Login is temporarily unavailable' }, { status: 503, headers: jsonHeaders });
-			if (!ipAllowed) return Response.json({ error: 'Too many attempts. Try again in 15 minutes.' }, { status: 429, headers: jsonHeaders });
-		}
+		const rateLimitResult = await checkLoginRateLimit(ipBucket, usernameBucket, async (attemptHash, maxAttempts) => {
+			const { data, error } = await admin.rpc('consume_login_attempt', { attempt_hash: attemptHash, max_attempts: maxAttempts });
+			return { data, error };
+		});
+		if (rateLimitResult === 'error') return Response.json({ error: 'Login is temporarily unavailable' }, { status: 503, headers: jsonHeaders });
+		if (rateLimitResult === 'limited') return Response.json({ error: 'Too many attempts. Try again in 15 minutes.' }, { status: 429, headers: jsonHeaders });
 
 		const { data: profile } = await admin.from('profiles').select('user_id').eq('username', username.toLowerCase()).maybeSingle();
 		if (!profile) {

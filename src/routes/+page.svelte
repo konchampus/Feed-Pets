@@ -1,8 +1,8 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import { base } from '$app/paths';
 	import BowlScene from '$lib/BowlScene.svelte';
-	import { addEvent, getEvents, getPets, getSchedules, saveEvents, savePets, saveSchedules, setDataScope, todayMeals } from '$lib/store';
+	import { addEvent, getEvents, getPets, getSchedules, isValidBackup, isValidCareAmount, saveEvents, savePets, saveSchedules, setDataScope, todayMeals } from '$lib/store';
 	import { careIcons, careLabels, type CareEvent, type CareKind, type CareSchedule, type Pet } from '$lib/types';
 	import { supabaseClient } from '$lib/supabase';
 	import { PUBLIC_VAPID_KEY } from '$env/static/public';
@@ -50,6 +50,8 @@
 	let petAllergies = $state('');
 	let petHealthNotes = $state('');
 	let fileInput = $state<HTMLInputElement>();
+	let careDialog = $state<HTMLDivElement>();
+	let restoreFocusTarget: HTMLElement | null = null;
 	let toastTimer: ReturnType<typeof setTimeout>;
 	let authListener: { unsubscribe: () => void } | null = null;
 	const kindOptions: CareKind[] = ['meal', 'walk', 'water', 'medicine', 'weight', 'vet', 'vaccine'];
@@ -61,6 +63,12 @@
 	let sortedEvents = $derived([...events].filter((event) => event.petId === activePet?.id).sort((a, b) => b.occurredAt.localeCompare(a.occurredAt)));
 	let weekCount = $derived(events.filter((event) => event.petId === activePet?.id && Date.now() - new Date(event.occurredAt).getTime() < 7 * 86400000).length);
 	let dateText = $derived(new Intl.DateTimeFormat('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date()));
+
+	$effect(() => {
+		if (sheetKind && careDialog) {
+			careDialog.querySelector<HTMLInputElement>('input:not([type="file"]), textarea, select')?.focus();
+		}
+	});
 
 	onMount(() => {
 		setDataScope('local');
@@ -96,23 +104,49 @@
 		toast = message; clearTimeout(toastTimer); toastTimer = setTimeout(() => toast = '', 2800);
 	}
 	function updateEvents(rows: CareEvent[]) { events = rows; saveEvents(rows); }
-	function openForm(kind: CareKind) { editingEventId = ''; sheetKind = kind; amount = kind === 'meal' ? '80' : ''; label = ''; note = ''; }
-	function editEvent(event: CareEvent) { editingEventId = event.id; sheetKind = event.kind; amount = event.amount?.toString() ?? ''; label = event.label ?? ''; note = event.note ?? ''; }
+	function rememberFocus() {
+		restoreFocusTarget = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+	}
+	function closeCareForm() {
+		sheetKind = null; editingEventId = '';
+		void tick().then(() => {
+			if (restoreFocusTarget?.isConnected) restoreFocusTarget.focus();
+			restoreFocusTarget = null;
+		});
+	}
+	function handleCareDialogKeydown(event: KeyboardEvent) {
+		if (event.key === 'Escape') { event.preventDefault(); closeCareForm(); return; }
+		if (event.key !== 'Tab' || !careDialog) return;
+		const focusable = Array.from(careDialog.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'))
+			.filter((element) => !element.hasAttribute('hidden') && element.getAttribute('aria-hidden') !== 'true');
+		if (focusable.length === 0) { event.preventDefault(); careDialog.focus(); return; }
+		const first = focusable[0];
+		const last = focusable[focusable.length - 1];
+		if (event.shiftKey && (document.activeElement === first || !careDialog.contains(document.activeElement))) {
+			event.preventDefault(); last.focus();
+		} else if (!event.shiftKey && (document.activeElement === last || !careDialog.contains(document.activeElement))) {
+			event.preventDefault(); first.focus();
+		}
+	}
+	function openForm(kind: CareKind) { rememberFocus(); editingEventId = ''; sheetKind = kind; amount = kind === 'meal' ? '80' : ''; label = ''; note = ''; }
+	function editEvent(event: CareEvent) { rememberFocus(); editingEventId = event.id; sheetKind = event.kind; amount = event.amount?.toString() ?? ''; label = event.label ?? ''; note = event.note ?? ''; }
 	async function saveCare() {
 		if (!sheetKind || !activePet) return;
+		if (!isValidCareAmount(sheetKind, amount)) { notify('Проверьте допустимое количество'); return; }
+		const savedAmount = amount.trim() ? Number(amount) : undefined;
 		if (editingEventId) {
 			const original = events.find((event) => event.id === editingEventId);
 			if (!original) return;
-			const updated = { ...original, amount: amount ? Number(amount) : undefined, unit: sheetKind === 'meal' ? 'г' : sheetKind === 'walk' ? 'мин' : sheetKind === 'weight' ? 'кг' : undefined, label: label.trim() || undefined, note: note.trim() || undefined };
+			const updated = { ...original, amount: savedAmount, unit: sheetKind === 'meal' ? 'г' : sheetKind === 'walk' ? 'мин' : sheetKind === 'weight' ? 'кг' : undefined, label: label.trim() || undefined, note: note.trim() || undefined };
 			if (supabase && familyId) {
 				const { error } = await supabase.from('care_events').update({ amount: updated.amount ?? null, unit: updated.unit ?? null, label: updated.label ?? null, note: updated.note ?? null }).eq('id', updated.id);
 				if (error) { notify('Не удалось изменить эту запись'); return; }
 			}
 			updateEvents(events.map((event) => event.id === updated.id ? updated : event));
-			sheetKind = null; editingEventId = ''; notify('Запись исправлена'); return;
+			closeCareForm(); notify('Запись исправлена'); return;
 		}
-		const event = addEvent({ petId: activePet.id, kind: sheetKind, by: member, authorId: currentUserId || undefined, amount: amount ? Number(amount) : undefined, unit: sheetKind === 'meal' ? 'г' : sheetKind === 'walk' ? 'мин' : sheetKind === 'weight' ? 'кг' : undefined, label: label.trim() || undefined, note: note.trim() || undefined });
-		updateEvents(getEvents()); sheetKind = null; notify(`${careLabels[event.kind]} отмечено`);
+		const event = addEvent({ petId: activePet.id, kind: sheetKind, by: member, authorId: currentUserId || undefined, amount: savedAmount, unit: sheetKind === 'meal' ? 'г' : sheetKind === 'walk' ? 'мин' : sheetKind === 'weight' ? 'кг' : undefined, label: label.trim() || undefined, note: note.trim() || undefined });
+		updateEvents(getEvents()); closeCareForm(); notify(`${careLabels[event.kind]} отмечено`);
 		if (supabase && cloudUser) void syncEvent(event);
 	}
 	async function syncEvent(event: CareEvent) {
@@ -217,8 +251,10 @@
 	function addPet() {
 		if (supabase && familyId && familyRole !== 'owner') { notify('Профили собак меняет владелец семьи'); return; }
 		const name = (document.querySelector<HTMLInputElement>('#pet-name')?.value ?? '').trim();
-		if (!name) return;
-		const pet: Pet = { id: crypto.randomUUID(), name, breed: document.querySelector<HTMLInputElement>('#pet-breed')?.value || 'Порода не указана', birthday: petBirthday, weightKg: Number(petWeight) || 0, allergies: petAllergies.trim(), healthNotes: petHealthNotes.trim() };
+		if (!name) { notify('Укажите имя собаки'); return; }
+		if (!isValidCareAmount('weight', petWeight)) { notify('Вес должен быть от 0,1 до 200 кг'); return; }
+		if (petBirthday && (Number.isNaN(Date.parse(petBirthday)) || petBirthday > new Date().toLocaleDateString('en-CA'))) { notify('Дата рождения не может быть в будущем'); return; }
+		const pet: Pet = { id: crypto.randomUUID(), name, breed: document.querySelector<HTMLInputElement>('#pet-breed')?.value.trim() || 'Порода не указана', birthday: petBirthday, weightKg: petWeight.trim() ? Number(petWeight) : 0, allergies: petAllergies.trim(), healthNotes: petHealthNotes.trim() };
 		if (supabase && familyId) {
 			void supabase.from('pets').insert({ family_id: familyId, name: pet.name, breed: pet.breed, birthday: pet.birthday || null, allergies: pet.allergies, health_notes: pet.healthNotes }).select('id').single().then(({ data, error }) => {
 				if (error || !data) { notify('Не удалось добавить собаку в семейный профиль'); return; }
@@ -240,7 +276,9 @@
 	}
 	function addSchedule() {
 		if (supabase && familyId && familyRole !== 'owner') { notify('Расписание меняет владелец семьи'); return; }
-		if (!activePet || !scheduleTitle.trim()) return;
+		if (!activePet) return;
+		if (!scheduleTitle.trim()) { notify('Укажите, о чём напомнить'); return; }
+		if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(scheduleTime)) { notify('Укажите корректное время'); return; }
 		const row: CareSchedule = { id: crypto.randomUUID(), petId: activePet.id, kind: scheduleKind, title: scheduleTitle.trim(), time: scheduleTime, days: [0,1,2,3,4,5,6], enabled: true };
 		if (supabase && familyId) {
 			void supabase.from('care_schedules').insert({ family_id: familyId, pet_id: row.petId, kind: row.kind, title: row.title, local_time: row.time, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone, weekdays: row.days }).select('id').single().then(({ data, error }) => {
@@ -351,9 +389,15 @@
 	}
 	function importData() { fileInput?.click(); }
 	async function readBackup(event: Event) {
-		const file = (event.currentTarget as HTMLInputElement).files?.[0]; if (!file) return;
-		try { const parsed = JSON.parse(await file.text()); if (!Array.isArray(parsed.pets) || !Array.isArray(parsed.events)) throw new Error(); pets = parsed.pets; events = parsed.events; schedules = Array.isArray(parsed.schedules) ? parsed.schedules : []; savePets(pets); saveEvents(events); saveSchedules(schedules); notify('Данные восстановлены'); }
-		catch { notify('Файл резервной копии не распознан'); }
+		const input = event.currentTarget as HTMLInputElement;
+		const file = input.files?.[0]; if (!file) return;
+		try {
+			const parsed: unknown = JSON.parse(await file.text());
+			if (!isValidBackup(parsed)) throw new Error('Invalid backup');
+			pets = parsed.pets; events = parsed.events; schedules = parsed.schedules; petIndex = 0;
+			savePets(pets); saveEvents(events); saveSchedules(schedules); notify('Данные восстановлены');
+		} catch { notify('Файл резервной копии не распознан'); }
+		finally { input.value = ''; }
 	}
 </script>
 
@@ -425,7 +469,7 @@
 			</section>
 		{:else if tab === 'schedule'}
 			<section class="page-panel"><div class="page-title"><div><p class="overline">ЗАБОТА ВОВРЕМЯ</p><h1>Расписание <em>дел</em></h1></div></div><div class="schedule-compose"><div><label for="schedule-title">О чём напомнить</label><input id="schedule-title" bind:value={scheduleTitle} placeholder="Например, вечернее лекарство" disabled={Boolean(supabase && familyId && familyRole !== 'owner')} /></div><div><label for="schedule-kind">Тип заботы</label><select id="schedule-kind" bind:value={scheduleKind} disabled={Boolean(supabase && familyId && familyRole !== 'owner')}>{#each kindOptions as kind}<option value={kind}>{careLabels[kind]}</option>{/each}</select></div><div><label for="schedule-time">Время</label><input id="schedule-time" type="time" bind:value={scheduleTime} disabled={Boolean(supabase && familyId && familyRole !== 'owner')} /></div><button class="primary-button" onclick={addSchedule} disabled={!activePet || Boolean(supabase && familyId && familyRole !== 'owner')}>Добавить</button></div>{#if supabase && familyRole === 'member'}<p class="timezone-note">Напоминания в семье меняет её владелец.</p>{/if}
-				{#if schedules.filter((row) => row.petId === activePet?.id).length}<div class="schedule-list">{#each schedules.filter((row) => row.petId === activePet?.id) as row}<article class:disabled={!row.enabled} class="schedule-row"><div class="schedule-symbol">{careIcons[row.kind]}</div><div><strong>{row.title}</strong><span>{careLabels[row.kind]} · каждый день</span></div><time>{row.time}</time><button class:toggle-on={row.enabled} class="toggle" aria-label="Переключить напоминание" onclick={() => toggleSchedule(row.id)}><i></i></button></article>{/each}</div>{:else}<div class="empty-line wide"><span>◷</span><p>Добавьте повторяющееся напоминание для кормления, лекарств или визита.</p></div>{/if}<p class="timezone-note">Время указано по часовому поясу этого устройства. Для push-напоминаний нужно подключить Supabase и VAPID.</p></section>
+				{#if schedules.filter((row) => row.petId === activePet?.id).length}<div class="schedule-list">{#each schedules.filter((row) => row.petId === activePet?.id) as row}<article class:disabled={!row.enabled} class="schedule-row"><div class="schedule-symbol">{careIcons[row.kind]}</div><div><strong>{row.title}</strong><span>{careLabels[row.kind]} · каждый день</span></div><time>{row.time}</time><button role="switch" aria-checked={row.enabled} class:toggle-on={row.enabled} class="toggle" aria-label={row.title} onclick={() => toggleSchedule(row.id)}><i></i></button></article>{/each}</div>{:else}<div class="empty-line wide"><span>◷</span><p>Добавьте повторяющееся напоминание для кормления, лекарств или визита.</p></div>{/if}<p class="timezone-note">Время указано по часовому поясу этого устройства. Для push-напоминаний нужно подключить Supabase и VAPID.</p></section>
 		{:else}
 			<section class="page-panel settings-page"><div class="page-title"><div><p class="overline">ВСЁ ПО-ВАШЕМУ</p><h1>Настройки</h1></div><span class:cloud={!!cloudUser} class="mode-pill">{cloudUser ? '◉ синхронизация' : '○ на этом устройстве'}</span></div>
 				<div class="settings-grid"><div class="settings-main">
@@ -466,7 +510,7 @@
 
 	{#if sheetKind}
 		<div class="sheet-backdrop">
-			<div class="care-sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title" tabindex="-1"><div class="sheet-handle"></div><button class="sheet-close" aria-label="Закрыть" onclick={() => sheetKind = null}>×</button><p class="overline">ОТМЕТКА ДЛЯ {activePet?.name.toUpperCase()}</p><h2 id="sheet-title">{careLabels[sheetKind]}</h2>
+			<div class="care-sheet" bind:this={careDialog} role="dialog" aria-modal="true" aria-labelledby="sheet-title" tabindex="-1" onkeydown={handleCareDialogKeydown}><div class="sheet-handle"></div><button class="sheet-close" aria-label="Закрыть" onclick={closeCareForm}>×</button><p class="overline">ОТМЕТКА ДЛЯ {activePet?.name.toUpperCase()}</p><h2 id="sheet-title">{careLabels[sheetKind]}</h2>
 				{#if sheetKind === 'meal'}<label for="care-amount">Граммы корма</label><div class="amount-input"><input id="care-amount" type="number" min="1" max="5000" bind:value={amount} /><span>г</span></div><label for="care-label">Марка или тип корма</label><input id="care-label" bind:value={label} placeholder="Например, утренний корм" />
 				{:else if sheetKind === 'walk'}<label for="care-amount">Длительность прогулки</label><div class="amount-input"><input id="care-amount" type="number" min="1" max="600" bind:value={amount} placeholder="30" /><span>мин</span></div><label for="care-label">Маршрут или занятие</label><input id="care-label" bind:value={label} placeholder="Например, парк" />
 				{:else if sheetKind === 'medicine'}<label for="care-label">Лекарство и доза</label><input id="care-label" bind:value={label} placeholder="Название, доза" />
