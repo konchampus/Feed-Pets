@@ -1,6 +1,6 @@
 # Feed-Pets
 
-Лапки — семейный дневник ухода за собакой.
+Лапки - семейный дневник ухода за собакой.
 
 Семейный PWA-дневник ухода за собакой. Стек: Svelte 5, SvelteKit, TypeScript, Supabase и Three.js. Статическая версия публикуется на GitHub Pages.
 
@@ -30,11 +30,11 @@ npm run dev
 6. Для VK ID создайте OAuth2 custom provider `custom:vk-id` в Supabase: перенесите authorize/token/userinfo endpoints и callback URL из актуальной панели VK ID, разрешите PKCE и внесите client ID/secret только в Supabase. До завершения этой настройки кнопка VK ID не заработает.
 7. Задайте Edge Function secrets через Supabase Dashboard → Edge Functions → Secrets или Supabase CLI:
 
-   - `SUPABASE_SERVICE_ROLE_KEY` — service role из Settings → API Keys; только на сервере.
-   - `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` — пара VAPID и контактный subject для Web Push. В GitHub хранится только публичный `PUBLIC_VAPID_KEY`.
-   - `CRON_SECRET` — случайная длинная строка для защиты `send-reminders`.
+   - `SUPABASE_SERVICE_ROLE_KEY` - service role из Settings → API Keys; только на сервере.
+   - `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` - пара VAPID и контактный subject для Web Push. В GitHub хранится только публичный `PUBLIC_VAPID_KEY`.
+   - `CRON_SECRET` - случайная длинная строка для защиты `send-reminders`.
 
-   Сгенерируйте VAPID пару в терминале: `npx --yes web-push generate-vapid-keys --json`. Значение `publicKey` добавьте как GitHub Actions secret `PUBLIC_VAPID_KEY` и Supabase Edge secret `VAPID_PUBLIC_KEY`; `privateKey` — только как `VAPID_PRIVATE_KEY`. Задайте `VAPID_SUBJECT` как `mailto:<ваш адрес>` и создайте случайный длинный `CRON_SECRET`. Ключи не присылайте в чат.
+   Сгенерируйте VAPID пару в терминале: `npx --yes web-push generate-vapid-keys --json`. Значение `publicKey` добавьте как GitHub Actions secret `PUBLIC_VAPID_KEY` и Supabase Edge secret `VAPID_PUBLIC_KEY`; `privateKey` - только как `VAPID_PRIVATE_KEY`. Задайте `VAPID_SUBJECT` как `mailto:<ваш адрес>` и создайте случайный длинный `CRON_SECRET`. Ключи не присылайте в чат.
 
    Service role, SMTP App Password, OAuth client secrets, `VAPID_PRIVATE_KEY` и `CRON_SECRET` нельзя класть в исходники, коммиты или GitHub variables. Никогда не используйте `service_role` в браузере.
 8. Миграции включают `care_events` и `pets` в публикацию `supabase_realtime`: события ухода и изменения профиля сразу приходят в открытые семейные устройства. Для расписания включите расширения `pg_cron` и `pg_net`, сохраните то же значение `CRON_SECRET` в Database → Vault под именем `CRON_SECRET` и выполните в SQL Editor, заменив `<project-ref>` на ref проекта:
@@ -65,9 +65,11 @@ Web Push работает по модели повторной доставки:
 
 ## Web Push на iPhone
 
-Для push на iPhone/iPad нужны iOS/iPadOS 16.4 или новее, HTTPS, добавление сайта на экран «Домой» из Safari и разрешение уведомлений после нажатия «Включить уведомления» внутри установленного PWA. **Работа push на iPhone не подтверждена** — это можно подтвердить только реальной проверкой установленного PWA на устройстве.
+Для push на iPhone/iPad нужны iOS/iPadOS 16.4 или новее, HTTPS, добавление сайта на экран «Домой» из Safari и разрешение уведомлений после нажатия «Включить уведомления» внутри установленного PWA. **Работа push на iPhone не подтверждена** - это можно подтвердить только реальной проверкой установленного PWA на устройстве.
 
 ## Данные и ограничения
+
+Если сеть или сервер временно недоступны, события семьи и ожидающие push-уведомления остаются в локальных очередях. Синхронизация и уведомления повторяются при следующей загрузке семьи или восстановлении сети.
 
 В локальном режиме записи хранятся в `localStorage` браузера; экспорт JSON можно восстановить в локальном режиме. В облачном режиме данные семьи и кэш разделены по семье и защищены RLS. Бесплатный Supabase может приостанавливать неактивный проект и не включает автоматические резервные копии; скачивайте резервную копию из «Настройки». Один аккаунт присоединяется к одной семье; для участия в другой семье нужен отдельный аккаунт.
 

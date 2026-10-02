@@ -2,7 +2,7 @@
 	import { onMount, tick } from 'svelte';
 	import { base } from '$app/paths';
 	import BowlScene from '$lib/BowlScene.svelte';
-	import { addEvent, getEvents, getPets, getSchedules, isValidBackup, isValidCareAmount, legacyStarterPetId, parseOptionalAmount, saveEvents, savePets, saveSchedules, setDataScope, todayMeals } from '$lib/store';
+	import { addEvent, flushPendingEvents, getEvents, getPendingEvents, getPendingPushEvents, getPets, getSchedules, isValidBackup, isValidCareAmount, legacyStarterPetId, mergePendingEvents, parseOptionalAmount, removePendingEvent, removePendingPushEvent, saveEvents, savePendingEvent, savePendingPushEvent, savePets, saveSchedules, setDataScope, todayMeals } from '$lib/store';
 	import { careIcons, careLabels, type CareEvent, type CareKind, type CareSchedule, type Pet } from '$lib/types';
 	import { supabaseClient } from '$lib/supabase';
 	import { PUBLIC_VAPID_KEY } from '$env/static/public';
@@ -87,6 +87,10 @@
 
 	onMount(() => {
 		setDataScope('local');
+		const retryFamilySync = () => {
+			if (supabase && currentUserId) void loadFamily(currentUserId);
+		};
+		window.addEventListener('online', retryFamilySync);
 		member = localStorage.getItem('lapki:member') ?? 'Я';
 		reducedMotion = localStorage.getItem('lapki:reduced-motion') === 'true';
 		soundEnabled = localStorage.getItem('lapki:sound') === 'true';
@@ -160,7 +164,12 @@
 		}).data.subscription;
 		const query = new URLSearchParams(location.search);
 		if (query.get('invite')) { tab = 'settings'; settingsPanel = 'auth'; authMessage = 'Войдите или создайте аккаунт, чтобы принять приглашение.'; }
-		return () => { if (familyChannel && supabase) void supabase.removeChannel(familyChannel); authListener?.unsubscribe(); clearTimeout(toastTimer); };
+		return () => {
+			window.removeEventListener('online', retryFamilySync);
+			if (familyChannel && supabase) void supabase.removeChannel(familyChannel);
+			authListener?.unsubscribe();
+			clearTimeout(toastTimer);
+		};
 	});
 
 	function notify(message: string) {
@@ -212,11 +221,13 @@
 			if (!original) return;
 			const context = getFamilyContext();
 			const updated = { ...original, amount: savedAmount, unit: sheetKind === 'meal' ? 'г' : sheetKind === 'walk' ? 'мин' : sheetKind === 'weight' ? 'кг' : undefined, label: label.trim() || undefined, note: note.trim() || undefined };
-			if (supabase && familyId) {
-				const { error } = await supabase.from('care_events').update({ amount: updated.amount ?? null, unit: updated.unit ?? null, label: updated.label ?? null, note: updated.note ?? null }).eq('id', updated.id);
-				if (error) { notify('Не удалось изменить эту запись'); return; }
+			const isPending = getPendingEvents().some((event) => event.id === updated.id);
+			if (supabase && familyId && !isPending) {
+				const { data, error } = await supabase.from('care_events').update({ amount: updated.amount ?? null, unit: updated.unit ?? null, label: updated.label ?? null, note: updated.note ?? null }).eq('id', updated.id).select('id').maybeSingle();
+				if (error || !data) { notify('Не удалось изменить эту запись'); return; }
 			}
 			if (!isCurrentFamilyContext(context)) return;
+			if (isPending) savePendingEvent({ ...updated, authorId: original.authorId ?? context.userId });
 			updateEvents(events.map((event) => event.id === updated.id ? updated : event));
 			closeCareForm(); notify('Запись исправлена'); return;
 		}
@@ -225,25 +236,64 @@
 		if (supabase && cloudUser) void syncEvent(event);
 	}
 	async function syncEvent(event: CareEvent) {
-		if (!supabase || !familyId) return;
+		if (!supabase || !familyId || !currentUserId) return;
 		const context = getFamilyContext();
-		const { error } = await supabase.from('care_events').insert({ id: event.id, family_id: familyId, pet_id: event.petId, kind: event.kind, occurred_at: event.occurredAt, actor_name: member, amount: event.amount, unit: event.unit, label: event.label, note: event.note });
+		const pendingEvent = { ...event, authorId: context.userId };
+		savePendingEvent(pendingEvent);
+		await syncPendingEvents(context, [pendingEvent]);
+	}
+	async function syncPendingEvents(context: FamilyContext, pendingEvents = getPendingEvents()) {
+		if (!supabase || !context.familyId || !isCurrentFamilyContext(context)) return;
+		const currentUserEvents = pendingEvents.filter((event) => event.authorId === context.userId);
+		const syncResult = await flushPendingEvents(async (event) => {
+			if (!isCurrentFamilyContext(context)) return 'deferred';
+			const { error } = await supabase!.from('care_events').upsert({
+				id: event.id,
+				family_id: context.familyId,
+				pet_id: event.petId,
+				author_id: event.authorId ?? context.userId,
+				kind: event.kind,
+				occurred_at: event.occurredAt,
+				actor_name: event.by,
+				amount: event.amount ?? null,
+				unit: event.unit ?? null,
+				label: event.label ?? null,
+				note: event.note ?? null
+			}, { onConflict: 'id' });
+			if (!isCurrentFamilyContext(context)) return 'deferred';
+			if (error) return 'failed';
+			savePendingPushEvent(event.id, event.authorId ?? context.userId);
+			return 'confirmed';
+		}, currentUserEvents);
 		if (!isCurrentFamilyContext(context)) return;
-		if (error) notify('Запись сохранена на устройстве, синхронизация не удалась');
-		else {
-			for (let attempt = 0; attempt < 4; attempt++) {
-				if (!isCurrentFamilyContext(context)) return;
-				const { error: pushError } = await supabase.functions.invoke('push-event', { body: { eventId: event.id } });
-				if (!isCurrentFamilyContext(context)) return;
-				if (!pushError) return;
-				if (attempt < 3) {
-					const response = pushError.context instanceof Response ? pushError.context : null;
-					const retryAfter = Number(response?.headers.get('Retry-After'));
-					await new Promise((resolve) => setTimeout(resolve, retryAfter > 0 ? retryAfter * 1000 : (attempt + 1) * 1500));
-				}
-			}
-			notify('Запись сохранена; уведомление семье пока не отправлено');
+		await syncPendingPushEvents(context);
+		if (syncResult.failedCount > 0) notify('Запись сохранена на устройстве, синхронизация не удалась');
+	}
+	async function syncPendingPushEvents(context: FamilyContext) {
+		if (!supabase || !context.familyId || !isCurrentFamilyContext(context)) return;
+		let pushFailed = false;
+		for (const pendingPushEvent of getPendingPushEvents()) {
+			if (pendingPushEvent.authorId !== context.userId) continue;
+			if (!isCurrentFamilyContext(context)) return;
+			if (await sendEventPush(pendingPushEvent.eventId, context)) removePendingPushEvent(pendingPushEvent.eventId);
+			else pushFailed = true;
 		}
+		if (pushFailed && isCurrentFamilyContext(context)) notify('Запись сохранена; уведомление семье пока не отправлено');
+	}
+	async function sendEventPush(eventId: string, context: FamilyContext) {
+		if (!supabase) return false;
+		for (let attempt = 0; attempt < 4; attempt++) {
+			if (!isCurrentFamilyContext(context)) return false;
+			const { error } = await supabase.functions.invoke('push-event', { body: { eventId } });
+			if (!isCurrentFamilyContext(context)) return false;
+			if (!error) return true;
+			if (attempt < 3) {
+				const response = error.context instanceof Response ? error.context : null;
+				const retryAfter = Number(response?.headers.get('Retry-After'));
+				await new Promise((resolve) => setTimeout(resolve, retryAfter > 0 ? retryAfter * 1000 : (attempt + 1) * 1500));
+			}
+		}
+		return false;
 	}
 	async function loadFamily(userId = '') {
 		if (!supabase) return true;
@@ -307,7 +357,8 @@
 			familyLoadError = 'Не удалось обновить семейные данные. Показана сохранённая копия; повторите загрузку.';
 			return finishFamilyLoad(false);
 		}
-		events = eventResult.data.map((row) => ({ id: row.id, petId: row.pet_id, kind: row.kind, occurredAt: row.occurred_at, authorId: row.author_id, by: row.actor_name, amount: row.amount ? Number(row.amount) : undefined, unit: row.unit ?? undefined, label: row.label ?? undefined, note: row.note ?? undefined }));
+		const serverEvents = eventResult.data.map((row) => ({ id: row.id, petId: row.pet_id, kind: row.kind, occurredAt: row.occurred_at, authorId: row.author_id, by: row.actor_name, amount: row.amount ? Number(row.amount) : undefined, unit: row.unit ?? undefined, label: row.label ?? undefined, note: row.note ?? undefined }));
+		events = mergePendingEvents(serverEvents);
 		saveEvents(events);
 		const latestWeight = new Map<string, number>();
 		for (const event of events) {
@@ -343,6 +394,7 @@
 				}
 			}
 		}).subscribe();
+		void syncPendingEvents(getFamilyContext());
 		return finishFamilyLoad(true);
 	}
 	async function setupFamily() {

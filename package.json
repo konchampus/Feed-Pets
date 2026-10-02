@@ -10,6 +10,7 @@
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "test:unit": "vitest run",
     "test:e2e": "playwright test",
+    "test:e2e:supabase": "playwright test --config=playwright.supabase.config.ts",
     "test": "npm run test:unit && npm run test:e2e"
   },
   "dependencies": {

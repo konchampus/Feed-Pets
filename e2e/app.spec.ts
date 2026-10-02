@@ -25,20 +25,50 @@ test('waits for browser idle before loading Three.js', async ({ browser, baseURL
 			id: 'e2e-dog', name: 'Рада', breed: 'Метис', birthday: '', weightKg: 0,
 			allergies: '', healthNotes: ''
 		}]));
-		const callbacks: IdleRequestCallback[] = [];
+		const callbacks = new Map<number, IdleRequestCallback>();
+		let nextCallbackId = 1;
+		let releasedCallbackCount = 0;
+		const idleWindow = window as Window & {
+			releaseIdleCallbacks?: () => void;
+			getPendingIdleCallbackCount?: () => number;
+			getReleasedCallbackCount?: () => number;
+		};
 		Object.defineProperty(window, 'requestIdleCallback', {
 			configurable: true,
-			value: (callback: IdleRequestCallback) => { callbacks.push(callback); return callbacks.length; }
+			value: (callback: IdleRequestCallback) => {
+				const callbackId = nextCallbackId++;
+				callbacks.set(callbackId, callback);
+				return callbackId;
+			}
 		});
-		Object.defineProperty(window, 'cancelIdleCallback', { configurable: true, value: () => undefined });
-		(window as Window & { releaseIdleCallbacks?: () => void }).releaseIdleCallbacks = () => {
-			for (const callback of callbacks.splice(0)) callback({ didTimeout: false, timeRemaining: () => 50 });
+		Object.defineProperty(window, 'cancelIdleCallback', {
+			configurable: true,
+			value: (callbackId: number) => callbacks.delete(callbackId)
+		});
+		idleWindow.getPendingIdleCallbackCount = () => callbacks.size;
+		idleWindow.getReleasedCallbackCount = () => releasedCallbackCount;
+		idleWindow.releaseIdleCallbacks = () => {
+			const pendingCallbacks = [...callbacks.values()];
+			callbacks.clear();
+			for (const callback of pendingCallbacks) {
+				releasedCallbackCount++;
+				callback({ didTimeout: false, timeRemaining: () => 50 });
+			}
 		};
 	});
 	await page.goto(baseURL ?? 'http://127.0.0.1:4173/');
 	await expect(page.locator('.bowl-fallback')).toBeVisible();
 	expect(threeRequested).toBe(false);
+	await expect.poll(() => page.evaluate(() => (window as Window & { getPendingIdleCallbackCount: () => number }).getPendingIdleCallbackCount())).toBe(1);
+	await page.getByRole('button', { name: 'Настройки', exact: true }).click();
+	await expect(page.getByRole('heading', { name: 'Внешний вид' })).toBeVisible();
+	await expect.poll(() => page.evaluate(() => (window as Window & { getPendingIdleCallbackCount: () => number }).getPendingIdleCallbackCount())).toBe(0);
+	await page.getByRole('button', { name: 'Главная', exact: true }).click();
+	await expect(page.locator('.bowl-fallback')).toBeVisible();
+	expect(threeRequested).toBe(false);
+	await expect.poll(() => page.evaluate(() => (window as Window & { getPendingIdleCallbackCount: () => number }).getPendingIdleCallbackCount())).toBe(1);
 	await page.evaluate(() => (window as Window & { releaseIdleCallbacks: () => void }).releaseIdleCallbacks());
+	expect(await page.evaluate(() => (window as Window & { getReleasedCallbackCount: () => number }).getReleasedCallbackCount())).toBe(1);
 	await expect.poll(() => threeRequested).toBe(true);
 	await context.close();
 });

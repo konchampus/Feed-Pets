@@ -32,6 +32,55 @@ export function getPets(): Pet[] {
 export function savePets(pets: Pet[]) { write('pets', pets); }
 export function getEvents(): CareEvent[] { return read('events', []); }
 export function saveEvents(events: CareEvent[]) { write('events', events); }
+export function getPendingEvents(): CareEvent[] { return read('pendingEvents', []); }
+export function savePendingEvent(event: CareEvent) {
+	const pendingEvents = getPendingEvents();
+	const eventIndex = pendingEvents.findIndex((pendingEvent) => pendingEvent.id === event.id);
+	if (eventIndex === -1) pendingEvents.push(event);
+	else pendingEvents[eventIndex] = event;
+	write('pendingEvents', pendingEvents);
+}
+export function removePendingEvent(eventId: string, expectedEvent?: CareEvent) {
+	write('pendingEvents', getPendingEvents().filter((event) => {
+		if (event.id !== eventId) return true;
+		return expectedEvent !== undefined && JSON.stringify(event) !== JSON.stringify(expectedEvent);
+	}));
+}
+export type PendingPushEvent = { eventId: string; authorId: string };
+export function getPendingPushEvents(): PendingPushEvent[] { return read('pendingPushEvents', []); }
+export function savePendingPushEvent(eventId: string, authorId: string) {
+	const pendingPushEvents = getPendingPushEvents();
+	if (!pendingPushEvents.some((pendingEvent) => pendingEvent.eventId === eventId)) {
+		pendingPushEvents.push({ eventId, authorId });
+		write('pendingPushEvents', pendingPushEvents);
+	}
+}
+export function removePendingPushEvent(eventId: string) {
+	write('pendingPushEvents', getPendingPushEvents().filter((event) => event.eventId !== eventId));
+}
+export type PendingEventResult = 'confirmed' | 'failed' | 'deferred';
+export async function flushPendingEvents(
+	saveEvent: (event: CareEvent) => Promise<PendingEventResult>,
+	pendingEvents = getPendingEvents()
+) {
+	const confirmedEvents: CareEvent[] = [];
+	let failedCount = 0;
+	for (const event of pendingEvents) {
+		let result: PendingEventResult;
+		try { result = await saveEvent(event); }
+		catch { result = 'failed'; }
+		if (result === 'deferred') return { confirmedEvents, failedCount, deferred: true };
+		if (result === 'failed') { failedCount++; continue; }
+		removePendingEvent(event.id, event);
+		confirmedEvents.push(event);
+	}
+	return { confirmedEvents, failedCount, deferred: false };
+}
+export function mergePendingEvents(serverEvents: CareEvent[], pendingEvents = getPendingEvents()) {
+	const mergedEvents = new Map(serverEvents.map((event) => [event.id, event]));
+	for (const event of pendingEvents) mergedEvents.set(event.id, event);
+	return [...mergedEvents.values()].sort((first, second) => second.occurredAt.localeCompare(first.occurredAt));
+}
 export function getSchedules(): CareSchedule[] { return read('schedules', []); }
 export function saveSchedules(schedules: CareSchedule[]) { write('schedules', schedules); }
 

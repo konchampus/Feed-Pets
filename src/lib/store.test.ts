@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { addEvent, getEvents, getPets, isValidBackup, isValidCareAmount, legacyStarterPetId, parseOptionalAmount, saveEvents, savePets, setDataScope, todayMeals } from './store';
+import { addEvent, flushPendingEvents, getEvents, getPendingEvents, getPendingPushEvents, getPets, isValidBackup, isValidCareAmount, legacyStarterPetId, mergePendingEvents, parseOptionalAmount, removePendingEvent, removePendingPushEvent, saveEvents, savePendingEvent, savePendingPushEvent, savePets, setDataScope, todayMeals } from './store';
 import type { CareEvent, Pet } from './types';
 
 afterEach(() => { localStorage.clear(); setDataScope('local'); vi.useRealTimers(); vi.unstubAllGlobals(); });
@@ -75,5 +75,81 @@ describe('care journal storage', () => {
 		setDataScope('family-b'); expect(getEvents()).toEqual([]);
 		setDataScope('local'); expect(getEvents()).toEqual([]);
 		setDataScope('family-a'); expect(getEvents()[0].id).toBe('a');
+	});
+
+	it('keeps pending family events scoped and merges them with server events', () => {
+		const serverEvent: CareEvent = { id: 'server-event', petId: 'dog', kind: 'meal', occurredAt: '2026-10-02T11:00:00.000Z', by: 'Аня' };
+		const pendingEvent: CareEvent = { id: 'pending-event', petId: 'dog', kind: 'walk', occurredAt: '2026-10-02T12:00:00.000Z', by: 'Я' };
+		setDataScope('family-a');
+		savePendingEvent(pendingEvent);
+		savePendingEvent(pendingEvent);
+		expect(getPendingEvents()).toEqual([pendingEvent]);
+		expect(mergePendingEvents([serverEvent])).toEqual([pendingEvent, serverEvent]);
+		expect(mergePendingEvents([{ ...serverEvent, id: 'pending-event' }])).toEqual([pendingEvent]);
+
+		setDataScope('family-b');
+		expect(getPendingEvents()).toEqual([]);
+		setDataScope('family-a');
+		removePendingEvent(pendingEvent.id);
+		expect(getPendingEvents()).toEqual([]);
+	});
+
+	it('replaces an older copy of an edited pending event', () => {
+		const pendingEvent: CareEvent = { id: 'pending-event', petId: 'dog', kind: 'meal', occurredAt: '2026-10-02T12:00:00.000Z', by: 'Я', amount: 80, unit: 'г' };
+		const updatedEvent = { ...pendingEvent, amount: 95 };
+		setDataScope('family-a');
+		savePendingEvent(pendingEvent);
+		savePendingEvent(updatedEvent);
+		expect(getPendingEvents()).toEqual([updatedEvent]);
+	});
+
+	it('keeps an edit made while a pending event is being sent', async () => {
+		const pendingEvent: CareEvent = { id: 'pending-event', petId: 'dog', kind: 'meal', occurredAt: '2026-10-02T12:00:00.000Z', by: 'Я', amount: 80, unit: 'г' };
+		const updatedEvent = { ...pendingEvent, amount: 95 };
+		setDataScope('family-a');
+		savePendingEvent(pendingEvent);
+		await flushPendingEvents(async () => {
+			savePendingEvent(updatedEvent);
+			return 'confirmed';
+		});
+		expect(getPendingEvents()).toEqual([updatedEvent]);
+	});
+
+	it('keeps failed events queued and removes them after a successful retry', async () => {
+		const pendingEvent: CareEvent = { id: 'pending-event', petId: 'dog', kind: 'meal', occurredAt: '2026-10-02T12:00:00.000Z', by: 'Я', amount: 80, unit: 'г' };
+		setDataScope('family-a');
+		savePendingEvent(pendingEvent);
+		const failedSync = await flushPendingEvents(async () => 'failed');
+		expect(failedSync.failedCount).toBe(1);
+		expect(getPendingEvents()).toEqual([pendingEvent]);
+
+		const successfulSync = await flushPendingEvents(async (event) => {
+			savePendingPushEvent(event.id, event.authorId ?? 'user-a');
+			return 'confirmed';
+		});
+		expect(successfulSync.confirmedEvents).toEqual([pendingEvent]);
+		expect(getPendingEvents()).toEqual([]);
+		expect(getPendingPushEvents()).toEqual([{ eventId: pendingEvent.id, authorId: 'user-a' }]);
+	});
+
+	it('leaves queued events untouched when a retry is deferred', async () => {
+		const pendingEvent: CareEvent = { id: 'pending-event', petId: 'dog', kind: 'meal', occurredAt: '2026-10-02T12:00:00.000Z', by: 'Я' };
+		setDataScope('family-a');
+		savePendingEvent(pendingEvent);
+		const result = await flushPendingEvents(async () => 'deferred');
+		expect(result.deferred).toBe(true);
+		expect(getPendingEvents()).toEqual([pendingEvent]);
+	});
+
+	it('keeps pending push deliveries separate and family scoped', () => {
+		setDataScope('family-a');
+		savePendingPushEvent('event-a', 'user-a');
+		savePendingPushEvent('event-a', 'user-a');
+		expect(getPendingPushEvents()).toEqual([{ eventId: 'event-a', authorId: 'user-a' }]);
+		setDataScope('family-b');
+		expect(getPendingPushEvents()).toEqual([]);
+		setDataScope('family-a');
+		removePendingPushEvent('event-a');
+		expect(getPendingPushEvents()).toEqual([]);
 	});
 });
