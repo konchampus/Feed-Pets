@@ -99,6 +99,42 @@ test('keeps old local care records when replacing the former starter profile', a
 	await expect(page.getByText('Старое кормление', { exact: true })).toBeVisible();
 });
 
+test('lets the family choose which saved dog receives old records', async ({ page }) => {
+	await page.evaluate((dog) => {
+		localStorage.clear();
+		localStorage.setItem('lapki:pets', JSON.stringify([
+			{ id: 'milo', name: 'Мило', breed: 'Корги', birthday: '2022-04-16', weightKg: 12.4, allergies: '', healthNotes: '' },
+			{ ...dog, id: 'rada', name: 'Рада' },
+			{ ...dog, id: 'bim', name: 'Бим' }
+		]));
+		localStorage.setItem('lapki:events', JSON.stringify([
+			{ id: 'legacy-meal', petId: 'milo', kind: 'meal', occurredAt: '2026-10-02T08:00:00.000Z', by: 'Я', amount: 80, unit: 'г' }
+		]));
+		localStorage.setItem('lapki:schedules', JSON.stringify([
+			{ id: 'legacy-schedule', petId: 'milo', kind: 'meal', title: 'Старое кормление', time: '08:00', days: [0, 1, 2, 3, 4, 5, 6], enabled: true }
+		]));
+	}, testDog);
+	await page.reload();
+	await expect(page.getByRole('note')).toContainText('В старом стартовом профиле осталось записей: 1, напоминаний: 1.');
+	await page.getByRole('button', { name: 'Настройки', exact: true }).click();
+	await expect(page.getByText(/Старые записи: 1 · напоминания: 1/)).toBeVisible();
+	await page.getByRole('button', { name: 'Перенести данные к Бим', exact: true }).click();
+	await expect(page.getByRole('status')).toHaveText('Старые данные привязаны к собаке Бим');
+	await page.getByRole('button', { name: 'История', exact: true }).click();
+	await expect(page.getByRole('heading', { name: /История Бим/i })).toBeVisible();
+	await expect(page.getByText('Кормление · 80 г', { exact: true })).toBeVisible();
+	await page.getByRole('button', { name: 'Расписание', exact: true }).click();
+	await expect(page.getByText('Старое кормление', { exact: true })).toBeVisible();
+	await expect(page.getByText(/Сохранено напоминаний/)).toHaveCount(0);
+});
+
+test('empty history opens the first meal form', async ({ page }) => {
+	await page.getByRole('button', { name: 'История', exact: true }).click();
+	await page.getByRole('button', { name: 'Отметить кормление', exact: true }).click();
+	await expect(page.getByRole('dialog')).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Кормление' })).toBeVisible();
+});
+
 test('rejects invalid care amounts and keeps the dialog open', async ({ page }) => {
 	await page.getByRole('button', { name: 'Кормление', exact: true }).click();
 	const dialog = page.getByRole('dialog');
@@ -122,7 +158,7 @@ test('rejects invalid care amounts and keeps the dialog open', async ({ page }) 
 	await expect(page.getByRole('button', { name: 'Кормление', exact: true })).toBeFocused();
 });
 
-test('navigates history and adds and toggles a schedule', async ({ page }) => {
+test('navigates history and adds, toggles, and deletes a schedule', async ({ page }) => {
 	await recordMeal(page, '75');
 	await page.getByRole('button', { name: 'История', exact: true }).click();
 	await expect(page.getByRole('heading', { name: /история рада/i })).toBeVisible();
@@ -136,10 +172,14 @@ test('navigates history and adds and toggles a schedule', async ({ page }) => {
 	await page.locator('#schedule-kind').selectOption({ label: 'Лекарство' });
 	await page.locator('#schedule-time').fill('20:30');
 	await page.getByRole('button', { name: 'Добавить', exact: true }).click();
-	const scheduleSwitch = page.getByRole('switch', { name: 'Вечернее лекарство' });
+	const scheduleSwitch = page.getByRole('switch', { name: 'Выключить: Вечернее лекарство' });
 	await expect(scheduleSwitch).toHaveAttribute('aria-checked', 'true');
 	await scheduleSwitch.click();
-	await expect(scheduleSwitch).toHaveAttribute('aria-checked', 'false');
+	const enabledSwitch = page.getByRole('switch', { name: 'Включить: Вечернее лекарство' });
+	await expect(enabledSwitch).toHaveAttribute('aria-checked', 'false');
+	await page.getByRole('button', { name: 'Удалить напоминание: Вечернее лекарство' }).click();
+	await expect(page.getByRole('status')).toHaveText('Напоминание удалено');
+	await expect(page.getByText('Добавьте повторяющееся напоминание для кормления, лекарств или визита.')).toBeVisible();
 });
 
 test('exports a backup, restores it, and rejects invalid backup data', async ({ page }, testInfo) => {
@@ -187,6 +227,24 @@ test('keeps navigation and main screens usable on a narrow viewport', async ({ p
 	await expect(page.getByRole('heading', { name: /история рада/i })).toBeVisible();
 	await page.getByRole('button', { name: 'Расписание', exact: true }).click();
 	await expect(page.getByRole('heading', { name: /расписание дел/i })).toBeVisible();
+	await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+	const longTitle = 'ДлинноеНапоминаниеБезПробеловДляПроверкиМобильногоПереносаСтроки';
+	await page.locator('#schedule-title').fill(longTitle);
+	await page.getByRole('button', { name: 'Добавить', exact: true }).click();
+	await expect(page.getByText(longTitle, { exact: true })).toBeVisible();
+	await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+	await page.getByRole('switch', { name: `Выключить: ${longTitle}` }).click();
+	await expect(page.getByRole('switch', { name: `Включить: ${longTitle}` })).toHaveAttribute('aria-checked', 'false');
+	await page.getByRole('button', { name: `Удалить напоминание: ${longTitle}` }).click();
+	await expect(page.getByText(longTitle, { exact: true })).toHaveCount(0);
+	await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+	await page.getByRole('button', { name: 'Настройки', exact: true }).click();
+	await expect(page.getByRole('heading', { name: 'Настройки' })).toBeVisible();
+	await expect(page.getByText(/на этом устройстве/i)).toBeVisible();
+	await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+	await page.getByRole('button', { name: 'Главная', exact: true }).click();
+	await page.getByRole('button', { name: 'Кормление', exact: true }).click();
+	await expect(page.getByRole('dialog')).toBeVisible();
 	await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 

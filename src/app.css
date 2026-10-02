@@ -130,7 +130,7 @@ textarea { padding-top: 10px; resize: vertical; }
 .schedule-list { max-width: 900px; }
 .schedule-row { display: flex; align-items: center; gap: 14px; padding: 17px 4px; border-bottom: 1px solid var(--line); }
 .schedule-symbol { display: grid; place-items: center; width: 39px; height: 39px; border-radius: 12px; background: #e9eddc; color: var(--leaf); font: 21px var(--serif); }
-.schedule-row > div:nth-child(2) { flex: 1; display: grid; gap: 4px; }
+.schedule-row > div:nth-child(2) { flex: 1; min-width: 0; display: grid; gap: 4px; overflow-wrap: anywhere; }
 .schedule-row strong { font-size: 13px; }
 .schedule-row span { color: var(--muted); font-size: 10px; }
 .schedule-row time { font: 700 17px var(--serif); }
@@ -139,6 +139,12 @@ textarea { padding-top: 10px; resize: vertical; }
 .toggle i { display: block; width: 17px; height: 17px; border-radius: 50%; background: white; transition: transform .15s; }
 .toggle.toggle-on { background: var(--leaf); }
 .toggle.toggle-on i { transform: translateX(16px); }
+.toggle:disabled { cursor: not-allowed; opacity: .5; }
+.schedule-delete { width: 32px; height: 32px; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: var(--muted); font-size: 18px; }
+.schedule-delete:hover { border-color: #d4a69a; color: #9b5544; }
+.legacy-transfer { display: grid; gap: 8px; padding: 14px 0; border-top: 1px solid #efeee6; }
+.legacy-transfer p { margin: 0 0 2px; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.legacy-transfer button { justify-self: start; }
 .timezone-note { max-width: 680px; margin-top: 24px; color: var(--muted); font-size: 11px; line-height: 1.5; }
 .empty-line.wide { max-width: 660px; margin-top: 21px; }
 .mode-pill { padding: 7px 10px; border: 1px solid #deded3; border-radius: 30px; }
