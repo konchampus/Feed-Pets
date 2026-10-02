@@ -4,6 +4,8 @@
 
 Семейный PWA-дневник ухода за собакой. Стек: Svelte 5, SvelteKit, TypeScript, Supabase и Three.js. Статическая версия публикуется на GitHub Pages.
 
+Опубликованная версия: [konchampus.github.io/Feed-Pets](https://konchampus.github.io/Feed-Pets/).
+
 ## Запуск
 
 Нужен Node.js 22 или новее.

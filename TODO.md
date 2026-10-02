@@ -16,11 +16,14 @@
 - [x] Проверить синтаксис TypeScript Edge Functions и модулей, JSON/YAML и отсутствие ключей в исходниках.
 - [ ] Установить зависимости локально; повторный `npm install --strict-ssl=true --fetch-retries=0` завершился `ERR_SSL_WRONG_VERSION_NUMBER`. TLS-проверки не ослаблять.
 - [ ] Создать и проверить `package-lock.json`, не меняя npm TLS-проверки.
-- [x] В GitHub Actions проверить `npm run check`, unit tests, Playwright E2E и `npm run build` (run `36962457746`, commit `4deec12`): все шаги build job прошли.
-- [x] Проверить GitHub Actions после настройки Pages: runs `36962457746` и `36962952950` завершили build, Configure GitHub Pages и deploy успешно.
-- [x] Вынести `prerender = true` в route module и добавить в CI обязательную проверку `build/index.html`.
-- [ ] После следующего Pages run проверить, что `build/index.html` опубликован, а `https://konchampus.github.io/Feed-Pets/` отвечает HTTP 200. На commit `698f530` root URL всё ещё отвечал 404; исправление route prerender в текущей ветке ожидает CI.
-- [ ] Двумя независимыми агентами пройти опубликованный сайт реальными кликами на desktop и узком мобильном viewport. На 390×844 агент увидел главную, набор действий и навигацию, переполнения нет; клик по «История» завис. Второй агент не получил браузерную вкладку (`nodeRepl.fetch request failed`). Повторить полный сценарий после восстановления браузерного доступа.
+- [x] В GitHub Actions проверить `npm run check`, unit tests, Playwright E2E и `npm run build` (run `37017681400`, commit `0e62825`): все build/deploy шаги прошли.
+- [x] Проверить GitHub Pages после настройки: repo metadata `has_pages: true`; run `37017681400` завершил Configure Pages и deploy успешно.
+- [x] Вынести `prerender = true` в `src/routes/+page.ts` и проверять в CI непустой `build/index.html`.
+- [x] Проверить опубликованную главную: HTTP 200; manifest, service worker и все найденные JS/CSS assets тоже отвечают HTTP 200.
+- [x] В ручной CUA-проверке открыть историю и расписание, создать кормление 125 г и подтвердить его в истории; создать ежедневное напоминание и подтвердить его отображение.
+- [x] Mobile QA агент на viewport 390×844 проверил главную, создание кормления, историю и расписание; `scrollWidth` не больше viewport, горизонтального переполнения нет.
+- [ ] Получить второй независимый ручной проход от desktop QA агента. Три попытки завершились тем, что IAB был недоступен, а Edge bridge отвечал `nodeRepl.fetch request failed`; этот агент не подтвердил клики.
+- [ ] Удалить тестовые локальные записи `QA — мобильная проверка`, `Проверка Codex` и `QA расписание Codex` из браузерного профиля Codex после завершения проверки.
 - [ ] Проверить, что обе семьи видят только свои записи; участник исправляет только свои записи, владелец управляет собакой и расписанием.
 - [ ] Проверить RLS и миграции на чистом Supabase-проекте; исходники независимо просмотрены, выполнение на живом backend не проверено.
 - [x] Завершить независимый аудит исходников по RLS, приглашениям, авторизации и push; живой backend не подключён и запросами не проверен.
@@ -29,7 +32,7 @@
 
 - [ ] Создать Supabase-проект и применить миграции по порядку.
 - [ ] Добавить публичные GitHub Actions Secrets: `PUBLIC_SUPABASE_URL`, `PUBLIC_SUPABASE_ANON_KEY`, `PUBLIC_VAPID_KEY`.
-- [x] Настроить GitHub Pages → GitHub Actions и выполнить deploy (run `36964128319` успешен); проверить HTTP 200 главной после текущего исправления route prerender.
+- [x] Настроить GitHub Pages → GitHub Actions и проверить deploy вместе с HTTP 200 главной (run `37017681400`).
 - [ ] Настроить Supabase Site URL/redirect URL с путём репозитория.
 - [ ] Настроить отдельный Gmail SMTP с App Password в Supabase и проверить письмо подтверждения/восстановления.
 - [ ] Создать Google OAuth client и добавить credentials в Supabase.
