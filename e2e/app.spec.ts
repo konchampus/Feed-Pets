@@ -1,7 +1,13 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { expect, test, type Page } from '@playwright/test';
 
+test.beforeEach(async ({ page }) => {
+	await page.goto('/');
+	await expect(page.locator('.app-shell')).toHaveAttribute('data-ready', 'true');
+});
+
 async function recordMeal(page: Page, grams: string) {
+	await expect(page.locator('.app-shell')).toHaveAttribute('data-ready', 'true');
 	await page.getByRole('button', { name: 'Кормление', exact: true }).click();
 	const dialog = page.getByRole('dialog');
 	await dialog.locator('#care-amount').fill(grams);
@@ -11,8 +17,6 @@ async function recordMeal(page: Page, grams: string) {
 test('opens dog journal and records a meal', async ({ page }) => {
 	page.on('pageerror', (error) => console.log(`Browser error: ${error.stack ?? error.message}`));
 	page.on('console', (message) => { if (message.type() === 'error') console.log(`Browser console: ${message.text()}`); });
-	await page.goto('/');
-	await expect(page.locator('.app-shell')).toHaveAttribute('data-ready', 'true');
 	await expect(page.getByRole('heading', { name: /привет, семья/i })).toBeVisible();
 	await page.getByRole('button', { name: 'Кормление', exact: true }).click();
 	const dialog = page.getByRole('dialog');
@@ -24,7 +28,6 @@ test('opens dog journal and records a meal', async ({ page }) => {
 });
 
 test('rejects invalid care amounts and keeps the dialog open', async ({ page }) => {
-	await page.goto('/');
 	await page.getByRole('button', { name: 'Кормление', exact: true }).click();
 	const dialog = page.getByRole('dialog');
 	await expect(dialog.locator('#care-amount')).toBeFocused();
@@ -47,7 +50,6 @@ test('rejects invalid care amounts and keeps the dialog open', async ({ page }) 
 });
 
 test('navigates history and adds and toggles a schedule', async ({ page }) => {
-	await page.goto('/');
 	await recordMeal(page, '75');
 	await page.getByRole('button', { name: 'История', exact: true }).click();
 	await expect(page.getByRole('heading', { name: /история мило/i })).toBeVisible();
@@ -68,7 +70,6 @@ test('navigates history and adds and toggles a schedule', async ({ page }) => {
 });
 
 test('exports a backup, restores it, and rejects invalid backup data', async ({ page }, testInfo) => {
-	await page.goto('/');
 	await recordMeal(page, '90');
 	await page.getByRole('button', { name: 'Настройки', exact: true }).click();
 	const downloadPromise = page.waitForEvent('download');
@@ -103,7 +104,6 @@ test('exports a backup, restores it, and rejects invalid backup data', async ({ 
 
 test('keeps navigation and main screens usable on a narrow viewport', async ({ page }) => {
 	await page.setViewportSize({ width: 390, height: 844 });
-	await page.goto('/');
 	const bottomNav = page.getByRole('navigation', { name: 'Основная навигация' });
 	await expect(bottomNav).toBeVisible();
 	await expect(page.getByRole('heading', { name: /привет, семья/i })).toBeVisible();
@@ -116,8 +116,6 @@ test('keeps navigation and main screens usable on a narrow viewport', async ({ p
 });
 
 test('opens settings with local mode and privacy status', async ({ page }) => {
-	await page.goto('/');
-	await expect(page.locator('.app-shell')).toHaveAttribute('data-ready', 'true');
 	await page.getByRole('button', { name: 'Настройки', exact: true }).click();
 	await expect(page.getByRole('heading', { name: 'Настройки' })).toBeVisible();
 	await expect(page.getByText(/на этом устройстве/i)).toBeVisible();
