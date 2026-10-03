@@ -79,7 +79,8 @@
 
 - [x] Создать Supabase-проект; подключён активный `Feed-Pets` (`vrbcpasdqrmuaejtyvpo`, `eu-west-2`).
 - [x] Применить семь миграций на пустом живом проекте по порядку; проверены список миграций, созданные таблицы и включённый RLS.
-- [ ] Развернуть семь Edge Functions, проверить безопасный отказ без внешних ключей и включить их после настройки клиентских ключей.
+- [x] Развернуть семь Edge Functions с `verify_jwt`, соответствующим настройке каждого обработчика; секреты пользовательского уровня остаются не заданными.
+- [ ] Применить закрытие внутренних функций RLS и проверить Supabase Advisor/права после миграции.
 - [ ] Добавить GitHub Actions Secrets: `PUBLIC_SUPABASE_URL`, `PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `PUBLIC_VAPID_KEY` (старый `PUBLIC_SUPABASE_ANON_KEY` работает как переходный fallback).
 - [x] Настроить GitHub Pages → GitHub Actions и проверить deploy вместе с HTTP 200 главной (run `37017681400`).
 - [ ] Настроить Supabase Site URL/redirect URL с путём репозитория.
