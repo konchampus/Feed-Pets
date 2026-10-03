@@ -122,7 +122,7 @@ export function parseOptionalAmount(value: string | number | undefined) {
 export function isValidBackup(value: unknown): value is { pets: Pet[]; events: CareEvent[]; schedules: CareSchedule[] } {
 	if (!isRecord(value) || !Array.isArray(value.pets) || !Array.isArray(value.events) || !Array.isArray(value.schedules)) return false;
 	const schedules = value.schedules;
-	if (!Array.isArray(schedules) || value.pets.length === 0) return false;
+	if (!Array.isArray(schedules)) return false;
 	if (!value.pets.every(isPet) || !value.events.every(isCareEvent) || !schedules.every(isCareSchedule)) return false;
 
 	const petIds = new Set(value.pets.map((pet) => pet.id));

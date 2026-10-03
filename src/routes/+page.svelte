@@ -46,6 +46,7 @@
 	let inviteEmail = $state('');
 	let familyChannel: RealtimeChannel | null = null;
 	let familyRefreshTimer: ReturnType<typeof setTimeout>;
+	let familyChangeVersion = 0;
 	let familyLoadVersion = 0;
 	let sessionVersion = 0;
 	let pendingAuthSignOutVersion: number | null = null;
@@ -353,9 +354,21 @@
 		setDataScope(`family:${familyId}`);
 		familyName = (membership.families as { name?: string } | null)?.name ?? '';
 		const results = await Promise.all([
-			supabase.from('pets').select('id,name,breed,birthday,photo_url,allergies,health_notes').eq('family_id', familyId),
-			fetchAllPages((from, to) => supabase.from('care_events').select('id,pet_id,kind,occurred_at,author_id,actor_name,amount,unit,label,note').eq('family_id', familyId).order('occurred_at', { ascending: false }).order('id', { ascending: true }).range(from, to)),
-			supabase.from('care_schedules').select('id,pet_id,kind,title,local_time,weekdays,is_active').eq('family_id', familyId)
+			fetchAllPages((afterId, pageSize) => {
+				let query = supabase.from('pets').select('id,name,breed,birthday,photo_url,allergies,health_notes').eq('family_id', familyId).order('id', { ascending: true });
+				if (afterId) query = query.gt('id', afterId);
+				return query.limit(pageSize);
+			}),
+			fetchAllPages((afterId, pageSize) => {
+				let query = supabase.from('care_events').select('id,pet_id,kind,occurred_at,author_id,actor_name,amount,unit,label,note').eq('family_id', familyId).order('id', { ascending: true });
+				if (afterId) query = query.gt('id', afterId);
+				return query.limit(pageSize);
+			}),
+			fetchAllPages((afterId, pageSize) => {
+				let query = supabase.from('care_schedules').select('id,pet_id,kind,title,local_time,weekdays,is_active').eq('family_id', familyId).order('id', { ascending: true });
+				if (afterId) query = query.gt('id', afterId);
+				return query.limit(pageSize);
+			})
 		]).catch(() => null);
 		if (!isCurrentLoad()) return finishFamilyLoad(false);
 		if (!results) {
@@ -363,22 +376,17 @@
 			familyLoadError = 'Не удалось обновить семейные данные. Показана сохранённая копия; повторите загрузку.';
 			return finishFamilyLoad(false);
 		}
-		const [petResult, eventResult, scheduleResult] = results;
-		if (petResult.error || scheduleResult.error || !Array.isArray(eventResult)) {
-			pets = getPets(); events = getEvents(); schedules = getSchedules();
-			familyLoadError = 'Не удалось обновить семейные данные. Показана сохранённая копия; повторите загрузку.';
-			return finishFamilyLoad(false);
-		}
-		const serverEvents = eventResult.map((row) => ({ id: row.id, petId: row.pet_id, kind: row.kind, occurredAt: row.occurred_at, authorId: row.author_id, by: row.actor_name, amount: row.amount ? Number(row.amount) : undefined, unit: row.unit ?? undefined, label: row.label ?? undefined, note: row.note ?? undefined }));
+		const [petRows, eventRows, scheduleRows] = results;
+		const serverEvents = eventRows.map((row) => ({ id: row.id, petId: row.pet_id, kind: row.kind, occurredAt: row.occurred_at, authorId: row.author_id, by: row.actor_name, amount: row.amount ? Number(row.amount) : undefined, unit: row.unit ?? undefined, label: row.label ?? undefined, note: row.note ?? undefined }));
 		events = mergePendingEvents(serverEvents);
 		saveEvents(events);
 		const latestWeight = new Map<string, number>();
 		for (const event of events) {
 			if (event.kind === 'weight' && event.amount && !latestWeight.has(event.petId)) latestWeight.set(event.petId, event.amount);
 		}
-		pets = (petResult.data ?? []).map((pet) => ({ id: pet.id, name: pet.name, breed: pet.breed, birthday: pet.birthday ?? '', photo: pet.photo_url ?? undefined, weightKg: latestWeight.get(pet.id) ?? 0, allergies: pet.allergies, healthNotes: pet.health_notes }));
+		pets = petRows.map((pet) => ({ id: pet.id, name: pet.name, breed: pet.breed, birthday: pet.birthday ?? '', photo: pet.photo_url ?? undefined, weightKg: latestWeight.get(pet.id) ?? 0, allergies: pet.allergies, healthNotes: pet.health_notes }));
 		petIndex = 0; savePets(pets);
-		schedules = (scheduleResult.data ?? []).map((row) => ({ id: row.id, petId: row.pet_id, kind: row.kind, title: row.title, time: String(row.local_time).slice(0, 5), days: row.weekdays, enabled: row.is_active }));
+		schedules = scheduleRows.map((row) => ({ id: row.id, petId: row.pet_id, kind: row.kind, title: row.title, time: String(row.local_time).slice(0, 5), days: row.weekdays, enabled: row.is_active }));
 		saveSchedules(schedules);
 		const channelVersion = loadVersion;
 		const channelFamilyId = familyId;
@@ -386,6 +394,7 @@
 		familyChannel = supabase.channel(`family:${familyId}`, { config: { private: true } })
 			.on('broadcast', { event: '*' }, () => {
 				if (familyLoadVersion !== channelVersion || familyId !== channelFamilyId) return;
+				familyChangeVersion++;
 				clearTimeout(familyRefreshTimer);
 				familyRefreshTimer = setTimeout(() => void loadFamily(currentUserId), 150);
 			})
@@ -796,18 +805,32 @@
 		if (blockFamilyChanges()) return;
 		const context = getFamilyContext();
 		const backupFamilyId = familyId;
+		const backupChangeVersion = familyChangeVersion;
 		exportingBackup = true;
 		try {
 			let backupPets = pets;
 			let backupEvents = mergePendingEvents(events);
 			let backupSchedules = schedules;
 			if (supabase && backupFamilyId) {
+				const exportStartedAt = new Date().toISOString();
 				const [petRows, eventRows, scheduleRows] = await Promise.all([
-					fetchAllPages((from, to) => supabase.from('pets').select('id,name,breed,birthday,photo_url,allergies,health_notes').eq('family_id', backupFamilyId).order('id').range(from, to)),
-					fetchAllPages((from, to) => supabase.from('care_events').select('id,pet_id,kind,occurred_at,author_id,actor_name,amount,unit,label,note').eq('family_id', backupFamilyId).order('occurred_at', { ascending: false }).order('id', { ascending: true }).range(from, to)),
-					fetchAllPages((from, to) => supabase.from('care_schedules').select('id,pet_id,kind,title,local_time,weekdays,is_active').eq('family_id', backupFamilyId).order('id').range(from, to))
+					fetchAllPages((afterId, pageSize) => {
+						let query = supabase.from('pets').select('id,name,breed,birthday,photo_url,allergies,health_notes').eq('family_id', backupFamilyId).lte('created_at', exportStartedAt).order('id', { ascending: true });
+						if (afterId) query = query.gt('id', afterId);
+						return query.limit(pageSize);
+					}),
+					fetchAllPages((afterId, pageSize) => {
+						let query = supabase.from('care_events').select('id,pet_id,kind,occurred_at,author_id,actor_name,amount,unit,label,note').eq('family_id', backupFamilyId).lte('created_at', exportStartedAt).order('id', { ascending: true });
+						if (afterId) query = query.gt('id', afterId);
+						return query.limit(pageSize);
+					}),
+					fetchAllPages((afterId, pageSize) => {
+						let query = supabase.from('care_schedules').select('id,pet_id,kind,title,local_time,weekdays,is_active').eq('family_id', backupFamilyId).lte('created_at', exportStartedAt).order('id', { ascending: true });
+						if (afterId) query = query.gt('id', afterId);
+						return query.limit(pageSize);
+					})
 				]);
-				if (!isCurrentFamilyContext(context) || familyId !== backupFamilyId) {
+				if (!isCurrentFamilyContext(context) || familyId !== backupFamilyId || familyChangeVersion !== backupChangeVersion) {
 					notify('Создание копии отменено после смены семейного профиля');
 					return;
 				}
@@ -822,7 +845,12 @@
 				notify('Создание копии отменено после смены профиля');
 				return;
 			}
-			const blob = new Blob([JSON.stringify({ exportedAt: new Date().toISOString(), pets: backupPets, events: backupEvents, schedules: backupSchedules }, null, 2)], { type: 'application/json' });
+			const backup = { exportedAt: new Date().toISOString(), pets: backupPets, events: backupEvents, schedules: backupSchedules };
+			if (!isValidBackup(backup)) {
+				notify('Копия не скачана: проверьте, что все записи относятся к сохранённым собакам');
+				return;
+			}
+			const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
 			const url = URL.createObjectURL(blob);
 			const link = document.createElement('a');
 			link.href = url;

@@ -50,6 +50,7 @@ describe('care journal storage', () => {
 		expect(isValidBackup({ ...backup, events: [{ ...backup.events[0], petId: 'unknown' }] })).toBe(false);
 		expect(isValidBackup({ ...backup, schedules: [{ ...backup.schedules[0], time: '25:00' }] })).toBe(false);
 		expect(isValidBackup({ pets: backup.pets, events: backup.events })).toBe(false);
+		expect(isValidBackup({ pets: [], events: [], schedules: [] })).toBe(true);
 	});
 
 	it('counts only this dog\'s meals from the current local day', () => {
