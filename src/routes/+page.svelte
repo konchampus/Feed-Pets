@@ -160,10 +160,10 @@
 					}).catch(() => undefined);
 				});
 			}
-			if (event === 'PASSWORD_RECOVERY') { tab = 'settings'; settingsPanel = 'auth'; authMode = 'reset'; authMessage = 'Введите новый пароль.'; }
+			if (event === 'PASSWORD_RECOVERY') { navigateToTab('settings'); settingsPanel = 'auth'; authMode = 'reset'; authMessage = 'Введите новый пароль.'; }
 		}).data.subscription;
 		const query = new URLSearchParams(location.search);
-		if (query.get('invite')) { tab = 'settings'; settingsPanel = 'auth'; authMessage = 'Войдите или создайте аккаунт, чтобы принять приглашение.'; }
+		if (query.get('invite')) { navigateToTab('settings'); settingsPanel = 'auth'; authMessage = 'Войдите или создайте аккаунт, чтобы принять приглашение.'; }
 		return () => {
 			window.removeEventListener('online', retryFamilySync);
 			if (familyChannel && supabase) void supabase.removeChannel(familyChannel);
@@ -174,6 +174,11 @@
 
 	function notify(message: string) {
 		toast = message; clearTimeout(toastTimer); toastTimer = setTimeout(() => toast = '', 2800);
+	}
+	function navigateToTab(nextTab: 'home' | 'history' | 'schedule' | 'settings') {
+		clearTimeout(toastTimer);
+		toast = '';
+		tab = nextTab;
 	}
 	function blockFamilyChanges() {
 		if (!supabase || (!familyLoadPending && (!cloudUser || !familyLoadError))) return false;
@@ -445,7 +450,7 @@
 	}
 	function rotatePet() { if (pets.length > 1) petIndex = (petIndex + 1) % pets.length; }
 	function openPetSetup() {
-		tab = 'settings';
+		navigateToTab('settings');
 		settingsPanel = cloudUser && !familyId ? '' : 'add-pet';
 	}
 	async function removeEvent(event: CareEvent) {
@@ -827,7 +832,7 @@
 	<header class="topbar">
 		<a class="brand" href={`${base}/`} aria-label="Лапки — на главную"><span class="brand-mark">⌁</span><span>лапки</span></a>
 		<div class="top-date">{dateText}</div>
-		<button class="avatar" aria-label="Открыть настройки" onclick={() => tab = 'settings'}>{member.slice(0,1).toUpperCase()}</button>
+		<button class="avatar" aria-label="Открыть настройки" onclick={() => navigateToTab('settings')}>{member.slice(0,1).toUpperCase()}</button>
 	</header>
 	{#if familyLoadError || familyLoadPending}<div class="cloud-error" role={familyLoadError ? 'alert' : 'status'}><p>{familyLoadError || 'Проверяем семейный профиль…'}</p><button class="quiet-button" disabled={familyLoadPending} onclick={() => void loadFamily(currentUserId)}>{familyLoadPending ? 'Загружаем…' : 'Повторить загрузку'}</button></div>{/if}
 
@@ -838,7 +843,7 @@
 			{#if !activePet}
 				<section class="page-panel"><div class="empty-state"><span>🐾</span><h2>Добавьте профиль собаки</h2><p>{familyRole === 'member' ? 'В семейном профиле пока нет собаки. Попросите владельца добавить её.' : cloudUser ? 'Настройте семейный профиль и добавьте первую собаку.' : legacyCareCount || legacyScheduleCount ? `Сохранено записей: ${legacyCareCount}, напоминаний: ${legacyScheduleCount}. Они сохранятся после добавления профиля.` : 'Укажите имя собаки, чтобы начать семейный дневник ухода.'}</p>
 					{#if familyRole !== 'member'}<button class="primary-button" onclick={openPetSetup}>{cloudUser ? 'Создать семейный профиль' : 'Добавить собаку'}</button>{/if}
-					{#if !cloudUser && supabase}<button class="secondary-button" onclick={() => { tab = 'settings'; settingsPanel = 'auth'; }}>Войти или создать семью</button>{/if}
+					{#if !cloudUser && supabase}<button class="secondary-button" onclick={() => { navigateToTab('settings'); settingsPanel = 'auth'; }}>Войти или создать семью</button>{/if}
 				</div></section>
 			{:else}
 			<div class="home-layout">
@@ -856,7 +861,7 @@
 					{#if !cloudUser && !familyId && (legacyCareCount || legacyScheduleCount)}
 						<div class="legacy-transfer" role="note">
 							<p>В старом стартовом профиле осталось записей: {legacyCareCount}, напоминаний: {legacyScheduleCount}.</p>
-							<button class="secondary-button" onclick={() => tab = 'settings'}>Выбрать собаку для переноса</button>
+							<button class="secondary-button" onclick={() => navigateToTab('settings')}>Выбрать собаку для переноса</button>
 						</div>
 					{/if}
 				</section>
@@ -878,7 +883,7 @@
 				</section>
 
 				<section class="today-feed" aria-labelledby="feed-title">
-					<div class="section-heading"><div><p class="overline">СЕГОДНЯ</p><h2 id="feed-title">День {activePet?.name}</h2></div><button class="text-link" onclick={() => tab = 'history'}>Вся история ↗</button></div>
+					<div class="section-heading"><div><p class="overline">СЕГОДНЯ</p><h2 id="feed-title">День {activePet?.name}</h2></div><button class="text-link" onclick={() => navigateToTab('history')}>Вся история ↗</button></div>
 					{#if sortedEvents.length}
 						<div class="timeline">
 							{#each sortedEvents.slice(0, 4) as event}
@@ -891,8 +896,8 @@
 
 			<aside class="side-column">
 				<div class="care-note"><span class="note-star">✳</span><p class="overline">ОДНА НЕДЕЛЯ РЯДОМ</p><strong>{weekCount}<span> дел заботы</span></strong><p>Каждая отметка помогает всей семье быть на одной волне.</p></div>
-				<div class="family-card"><div class="family-header">{#if familyId}<div class="family-dots"><b>{member.slice(0,1).toUpperCase()}</b>{#if familyRole === 'owner'}<b>+</b>{/if}</div>{:else}<span class="overline">НА ЭТОМ УСТРОЙСТВЕ</span>{/if}{#if familyRole === 'owner'}<button aria-label="Добавить участника" onclick={() => { tab = 'settings'; settingsPanel = 'profile'; }}>＋</button>{/if}</div><h3>{familyId ? 'Свои рядом' : 'Дневник ухода'}</h3><p>{familyId ? `Общий профиль${familyName ? ` · ${familyName}` : ''}` : cloudUser ? 'Создайте семейный профиль для синхронизации.' : 'Записи пока сохранены только в этом браузере.'}</p><button class="invite-link" onclick={() => { tab = 'settings'; settingsPanel = cloudUser ? 'profile' : 'auth'; }}>{familyRole === 'owner' ? 'Пригласить участника ↗' : familyId ? 'Настроить профиль семьи ↗' : cloudUser ? 'Создать семейный профиль ↗' : 'Подключить семью ↗'}</button></div>
-				<div class="reminder-card"><div class="reminder-mark">◷</div><div><span>СЛЕДУЮЩЕЕ</span><strong>{schedules.find((item) => item.enabled && item.petId === activePet?.id)?.title ?? 'Пока без напоминаний'}</strong><small>{schedules.find((item) => item.enabled && item.petId === activePet?.id)?.time ?? 'Добавьте расписание ухода'}</small></div><button aria-label="Открыть расписание" onclick={() => tab = 'schedule'}>↗</button></div>
+				<div class="family-card"><div class="family-header">{#if familyId}<div class="family-dots"><b>{member.slice(0,1).toUpperCase()}</b>{#if familyRole === 'owner'}<b>+</b>{/if}</div>{:else}<span class="overline">НА ЭТОМ УСТРОЙСТВЕ</span>{/if}{#if familyRole === 'owner'}<button aria-label="Добавить участника" onclick={() => { navigateToTab('settings'); settingsPanel = 'profile'; }}>＋</button>{/if}</div><h3>{familyId ? 'Свои рядом' : 'Дневник ухода'}</h3><p>{familyId ? `Общий профиль${familyName ? ` · ${familyName}` : ''}` : cloudUser ? 'Создайте семейный профиль для синхронизации.' : 'Записи пока сохранены только в этом браузере.'}</p><button class="invite-link" onclick={() => { navigateToTab('settings'); settingsPanel = cloudUser ? 'profile' : 'auth'; }}>{familyRole === 'owner' ? 'Пригласить участника ↗' : familyId ? 'Настроить профиль семьи ↗' : cloudUser ? 'Создать семейный профиль ↗' : 'Подключить семью ↗'}</button></div>
+				<div class="reminder-card"><div class="reminder-mark">◷</div><div><span>СЛЕДУЮЩЕЕ</span><strong>{schedules.find((item) => item.enabled && item.petId === activePet?.id)?.title ?? 'Пока без напоминаний'}</strong><small>{schedules.find((item) => item.enabled && item.petId === activePet?.id)?.time ?? 'Добавьте расписание ухода'}</small></div><button aria-label="Открыть расписание" onclick={() => navigateToTab('schedule')}>↗</button></div>
 			</aside>
 			{/if}
 		{:else if tab === 'history'}
@@ -982,17 +987,17 @@
 								{/if}
 							{/if}
 						</section>
-						<section class="settings-block"><div class="settings-heading"><div><h2>Ваши напоминания</h2><p>{pushEnabled ? 'Уведомления включены на этом устройстве.' : 'Нужны для событий семьи и расписания.'}</p></div><span>♧</span></div>{#if isConfigured}{#if familyId}<button class="secondary-button" onclick={() => pushEnabled ? void disablePush() : void enablePush()}>{pushEnabled ? 'Отключить уведомления' : 'Включить уведомления'}</button>{:else}<button class="secondary-button" onclick={() => { tab = 'settings'; settingsPanel = cloudUser ? 'profile' : 'auth'; }}>{cloudUser ? 'Создать семейный профиль' : 'Войти в семейный профиль'}</button>{/if}{:else}<p class="fine-print">Push пока не настроен. Нужны проект Supabase и ключ VAPID; шаги есть в README репозитория.</p>{/if}<p class="fine-print">На iPhone откройте сайт в Safari, добавьте его на экран «Домой» и включите уведомления внутри установленного PWA.</p></section>
+						<section class="settings-block"><div class="settings-heading"><div><h2>Ваши напоминания</h2><p>{pushEnabled ? 'Уведомления включены на этом устройстве.' : 'Нужны для событий семьи и расписания.'}</p></div><span>♧</span></div>{#if isConfigured}{#if familyId}<button class="secondary-button" onclick={() => pushEnabled ? void disablePush() : void enablePush()}>{pushEnabled ? 'Отключить уведомления' : 'Включить уведомления'}</button>{:else}<button class="secondary-button" onclick={() => { navigateToTab('settings'); settingsPanel = cloudUser ? 'profile' : 'auth'; }}>{cloudUser ? 'Создать семейный профиль' : 'Войти в семейный профиль'}</button>{/if}{:else}<p class="fine-print">Push пока не настроен. Нужны проект Supabase и ключ VAPID; шаги есть в README репозитория.</p>{/if}<p class="fine-print">На iPhone откройте сайт в Safari, добавьте его на экран «Домой» и включите уведомления внутри установленного PWA.</p></section>
 					</div><aside class="settings-side"><section class="settings-block"><div class="settings-heading"><div><h2>Внешний вид</h2><p>Легко для глаз и устройства</p></div><span>◐</span></div><label class="setting-toggle"><span>3D-миска</span><input type="checkbox" bind:checked={scene} onchange={() => localStorage.setItem('lapki:scene', String(scene))} /><i></i></label><label class="setting-toggle"><span>Звук отметки</span><input type="checkbox" bind:checked={soundEnabled} onchange={() => localStorage.setItem('lapki:sound', String(soundEnabled))} /><i></i></label><label class="setting-toggle"><span>Уменьшить анимацию</span><input type="checkbox" bind:checked={reducedMotion} onchange={() => localStorage.setItem('lapki:reduced-motion', String(reducedMotion))} /><i></i></label></section><section class="settings-block"><div class="settings-heading"><div><h2>Копия данных</h2><p>Храните свои записи в безопасности</p></div><span>↧</span></div><button class="secondary-button" onclick={exportData}>Скачать резервную копию</button><button class="quiet-button" disabled={Boolean(cloudUser)} onclick={importData}>Восстановить из файла</button><input bind:this={fileInput} class="sr-only" type="file" accept="application/json" onchange={readBackup} /><p class="fine-print">{cloudUser ? 'Для восстановления выйдите в локальный режим.' : 'На бесплатном тарифе Supabase нет автоматических резервных копий.'}</p></section><section class="settings-block info-block"><p class="overline">ПРИВАТНОСТЬ</p><p>Локальные данные остаются в этом браузере. Общий доступ появляется после подключения Supabase; записи защищены политиками доступа семьи.</p><a href="https://supabase.com/docs/guides/platform/free" target="_blank" rel="noreferrer">О бесплатном тарифе Supabase ↗</a></section></aside></div>
 			</section>
 		{/if}
 	</main>
 
 	<nav class="bottom-nav" aria-label="Основная навигация">
-		<button class:active={tab === 'home'} aria-pressed={tab === 'home'} aria-label="Главная" onclick={() => tab = 'home'}><span>⌂</span>Сегодня</button>
-		<button class:active={tab === 'history'} aria-pressed={tab === 'history'} aria-label="История" onclick={() => tab = 'history'}><span>≋</span>История</button>
-		<button class:active={tab === 'schedule'} aria-pressed={tab === 'schedule'} aria-label="Расписание" onclick={() => tab = 'schedule'}><span>◷</span>План</button>
-		<button class:active={tab === 'settings'} aria-pressed={tab === 'settings'} aria-label="Настройки" onclick={() => tab = 'settings'}><span>◌</span>Моё</button>
+		<button class:active={tab === 'home'} aria-pressed={tab === 'home'} aria-label="Главная" onclick={() => navigateToTab('home')}><span>⌂</span>Сегодня</button>
+		<button class:active={tab === 'history'} aria-pressed={tab === 'history'} aria-label="История" onclick={() => navigateToTab('history')}><span>≋</span>История</button>
+		<button class:active={tab === 'schedule'} aria-pressed={tab === 'schedule'} aria-label="Расписание" onclick={() => navigateToTab('schedule')}><span>◷</span>План</button>
+		<button class:active={tab === 'settings'} aria-pressed={tab === 'settings'} aria-label="Настройки" onclick={() => navigateToTab('settings')}><span>◌</span>Моё</button>
 	</nav>
 
 	{#if sheetKind}

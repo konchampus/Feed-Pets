@@ -126,6 +126,25 @@ test('starts without a sample dog and lets the family add its own profile', asyn
 	await expect(page.getByRole('heading', { name: 'День Рада дома' })).toBeVisible();
 });
 
+test('clears the previous success message when opening family setup', async ({ page }) => {
+	await page.evaluate(() => localStorage.clear());
+	await page.reload();
+	await expect(page.locator('.app-shell')).toHaveAttribute('data-ready', 'true');
+
+	await page.getByRole('button', { name: 'Добавить собаку', exact: true }).click();
+	await page.locator('#pet-name').fill('Рада');
+	await page.locator('#pet-breed').fill('Метис');
+	await page.getByRole('button', { name: 'Добавить профиль' }).click();
+	await expect(page.getByRole('status')).toHaveText('Профиль собаки добавлен');
+
+	await page.getByRole('button', { name: 'Главная', exact: true }).click();
+	await expect(page.getByRole('status')).toHaveCount(0);
+	await page.getByRole('button', { name: 'Подключить семью ↗', exact: true }).click();
+	await expect(page.getByRole('heading', { name: 'Настройки', exact: true })).toBeVisible();
+	await expect(page.getByText(/Семейный вход появится после подключения Supabase/)).toBeVisible();
+	await expect(page.getByRole('status')).toHaveCount(0);
+});
+
 test('first dog setup works on a narrow screen', async ({ page }) => {
 	await page.setViewportSize({ width: 390, height: 844 });
 	await page.evaluate(() => localStorage.clear());
