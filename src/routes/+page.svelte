@@ -60,6 +60,7 @@
 	let scheduleTitle = $state('');
 	let scheduleTime = $state('08:00');
 	let scheduleKind = $state<CareKind>('meal');
+	let scheduleSaving = $state(false);
 	let petBirthday = $state('');
 	let petName = $state('');
 	let petBreed = $state('');
@@ -568,7 +569,8 @@
 		pets = pets.filter((pet) => pet.id !== petId); events = events.filter((event) => event.petId !== petId); schedules = schedules.filter((item) => item.petId !== petId);
 		savePets(pets); saveEvents(events); saveSchedules(schedules); petIndex = 0; notify('Профиль удалён');
 	}
-	function addSchedule() {
+	async function addSchedule() {
+		if (scheduleSaving) return;
 		if (blockFamilyChanges()) return;
 		if (supabase && familyId && familyRole !== 'owner') { notify('Расписание меняет владелец семьи'); return; }
 		if (!activePet) return;
@@ -577,11 +579,17 @@
 		const row: CareSchedule = { id: crypto.randomUUID(), petId: activePet.id, kind: scheduleKind, title: scheduleTitle.trim(), time: scheduleTime, days: [0,1,2,3,4,5,6], enabled: true };
 		if (supabase && familyId) {
 			const context = getFamilyContext();
-			void supabase.from('care_schedules').insert({ family_id: familyId, pet_id: row.petId, kind: row.kind, title: row.title, local_time: row.time, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone, weekdays: row.days }).select('id').single().then(({ data, error }) => {
+			scheduleSaving = true;
+			try {
+				const { data, error } = await supabase.from('care_schedules').insert({ family_id: familyId, pet_id: row.petId, kind: row.kind, title: row.title, local_time: row.time, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone, weekdays: row.days }).select('id').single();
 				if (!isCurrentFamilyContext(context)) return;
 				if (error || !data) { notify('Не удалось сохранить напоминание'); return; }
 				schedules = [...schedules, { ...row, id: data.id }]; saveSchedules(schedules); scheduleTitle = ''; notify('Напоминание добавлено');
-			});
+			} catch {
+				if (isCurrentFamilyContext(context)) notify('Не удалось сохранить напоминание');
+			} finally {
+				scheduleSaving = false;
+			}
 			return;
 		}
 		schedules = [...schedules, row]; saveSchedules(schedules); scheduleTitle = ''; notify('Напоминание добавлено');
@@ -967,7 +975,7 @@
 			</section>
 		{:else if tab === 'schedule'}
 			<section class="page-panel"><div class="page-title"><div><p class="overline">ЗАБОТА ВОВРЕМЯ</p><h1>Расписание <em>дел</em></h1></div></div>
-				{#if activePet}<div class="schedule-compose"><div><label for="schedule-title">О чём напомнить</label><input id="schedule-title" bind:value={scheduleTitle} maxlength="80" placeholder="Например, вечернее лекарство" disabled={Boolean(supabase && familyId && familyRole !== 'owner')} /></div><div><label for="schedule-kind">Тип заботы</label><select id="schedule-kind" bind:value={scheduleKind} disabled={Boolean(supabase && familyId && familyRole !== 'owner')}>{#each kindOptions as kind}<option value={kind}>{careLabels[kind]}</option>{/each}</select></div><div><label for="schedule-time">Время</label><input id="schedule-time" type="time" bind:value={scheduleTime} disabled={Boolean(supabase && familyId && familyRole !== 'owner')} /></div><button class="primary-button" onclick={addSchedule} disabled={Boolean(supabase && familyId && familyRole !== 'owner')}>Добавить</button></div>{#if supabase && familyRole === 'member'}<p class="timezone-note">Напоминания в семье меняет её владелец.</p>{/if}
+				{#if activePet}<div class="schedule-compose"><div><label for="schedule-title">О чём напомнить</label><input id="schedule-title" bind:value={scheduleTitle} maxlength="80" placeholder="Например, вечернее лекарство" disabled={scheduleSaving || Boolean(supabase && familyId && familyRole !== 'owner')} /></div><div><label for="schedule-kind">Тип заботы</label><select id="schedule-kind" bind:value={scheduleKind} disabled={scheduleSaving || Boolean(supabase && familyId && familyRole !== 'owner')}>{#each kindOptions as kind}<option value={kind}>{careLabels[kind]}</option>{/each}</select></div><div><label for="schedule-time">Время</label><input id="schedule-time" type="time" bind:value={scheduleTime} disabled={scheduleSaving || Boolean(supabase && familyId && familyRole !== 'owner')} /></div><button class="primary-button" onclick={addSchedule} disabled={scheduleSaving || Boolean(supabase && familyId && familyRole !== 'owner')}>{scheduleSaving ? 'Сохраняем…' : 'Добавить'}</button></div>{#if supabase && familyRole === 'member'}<p class="timezone-note">Напоминания в семье меняет её владелец.</p>{/if}
 				{#if schedules.filter((row) => row.petId === activePet?.id).length}
 					<div class="schedule-list">
 						{#each schedules.filter((row) => row.petId === activePet?.id) as row}

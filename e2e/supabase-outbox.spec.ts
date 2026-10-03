@@ -11,7 +11,7 @@ const testUser = {
 	updated_at: '2026-10-02T00:00:00.000Z'
 };
 
-test('retries a family event and push after the insert response is lost', async ({ browser, baseURL }) => {
+test('retries family writes and protects cloud schedule creation', async ({ browser, baseURL }) => {
 	const context = await browser.newContext();
 	const page = await context.newPage();
 	let serverEvents: Record<string, unknown>[] = [];
@@ -22,6 +22,9 @@ test('retries a family event and push after the insert response is lost', async 
 	let eventDeleteAttempts = 0;
 	let scheduleUpdateAttempts = 0;
 	let scheduleDeleteAttempts = 0;
+	let scheduleInsertAttempts = 0;
+	let releaseFirstScheduleInsert: (() => void) | undefined;
+	const firstScheduleInsert = new Promise<void>((resolve) => { releaseFirstScheduleInsert = resolve; });
 	const insertedEventIds: unknown[] = [];
 	const pageErrors: string[] = [];
 	page.on('pageerror', (error) => pageErrors.push(error.message));
@@ -132,6 +135,24 @@ test('retries a family event and push after the insert response is lost', async 
 			await respond(200, []);
 			return;
 		}
+		if (url.pathname === '/rest/v1/care_schedules' && request.method() === 'POST') {
+			scheduleInsertAttempts++;
+			if (scheduleInsertAttempts === 1) {
+				await firstScheduleInsert;
+				await respond(201, { id: '123e4567-e89b-12d3-a456-426614174005' });
+				return;
+			}
+			if (scheduleInsertAttempts === 2) {
+				await respond(503, { message: 'Schedule storage is temporarily unavailable.' });
+				return;
+			}
+			if (scheduleInsertAttempts === 3) {
+				await route.abort('failed');
+				return;
+			}
+			await respond(201, { id: '123e4567-e89b-12d3-a456-426614174006' });
+			return;
+		}
 		if (url.pathname === '/rest/v1/care_schedules' && request.method() === 'DELETE') {
 			scheduleDeleteAttempts++;
 			await respond(200, []);
@@ -237,6 +258,32 @@ test('retries a family event and push after the insert response is lost', async 
 		await expect(page.getByText('Кормление · 95 г', { exact: true })).toBeVisible();
 
 		await page.getByRole('button', { name: 'Расписание', exact: true }).click();
+		await page.locator('#schedule-title').fill('Вечернее лекарство');
+		await page.locator('#schedule-kind').selectOption('medicine');
+		const addScheduleButton = page.locator('.schedule-compose button.primary-button');
+		await addScheduleButton.click();
+		await expect.poll(() => scheduleInsertAttempts).toBe(1);
+		await expect(addScheduleButton).toBeDisabled();
+		await addScheduleButton.dispatchEvent('click');
+		expect(scheduleInsertAttempts).toBe(1);
+		releaseFirstScheduleInsert?.();
+		await expect(page.getByRole('status')).toHaveText('Напоминание добавлено');
+		await expect(page.getByRole('button', { name: 'Удалить напоминание: Вечернее лекарство' })).toBeVisible();
+
+		await page.locator('#schedule-title').fill('После прогулки');
+		await addScheduleButton.click();
+		await expect(page.getByRole('status')).toHaveText('Не удалось сохранить напоминание');
+		await expect(page.locator('#schedule-title')).toHaveValue('После прогулки');
+		expect(scheduleInsertAttempts).toBe(2);
+		await addScheduleButton.click();
+		await expect(page.getByRole('status')).toHaveText('Не удалось сохранить напоминание');
+		await expect(page.locator('#schedule-title')).toHaveValue('После прогулки');
+		expect(scheduleInsertAttempts).toBe(3);
+		await addScheduleButton.click();
+		await expect(page.getByRole('status')).toHaveText('Напоминание добавлено');
+		await expect(page.getByRole('button', { name: 'Удалить напоминание: После прогулки' })).toBeVisible();
+		expect(scheduleInsertAttempts).toBe(4);
+
 		const scheduleSwitch = page.getByRole('switch', { name: 'Выключить: Утреннее кормление' });
 		await scheduleSwitch.click();
 		await expect(page.getByRole('status')).toHaveText('Не удалось обновить напоминание');

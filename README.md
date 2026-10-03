@@ -23,7 +23,7 @@ npm run dev
 ## Supabase
 
 1. Для Feed-Pets уже создан проект Supabase: project ref `vrbcpasdqrmuaejtyvpo`, Project URL `https://vrbcpasdqrmuaejtyvpo.supabase.co`. В Settings → API Keys возьмите default Publishable key (`sb_publishable_…`). Publishable key предназначен для браузера; доступ к данным ограничен RLS. Старый anon key пока тоже поддерживается, если проект уже использует его.
-2. Установите [Supabase CLI](https://supabase.com/docs/guides/cli/getting-started), войдите и привяжите проект. У live-проекта Feed-Pets восемь миграций уже применены через Supabase platform tools; **не запускайте на нём `supabase db push`, пока не сверите remote migration history с именами локальных файлов**. Сначала проверьте `supabase migration list --linked`; при расхождении остановитесь и согласуйте историю с фактически применённой схемой. Для нового пустого проекта из корня репозитория выполните:
+2. Установите [Supabase CLI](https://supabase.com/docs/guides/cli/getting-started), войдите и привяжите проект. У live-проекта Feed-Pets девять миграций уже применены через Supabase platform tools; **не запускайте на нём `supabase db push`, пока не сверите remote migration history с именами локальных файлов**. Сначала проверьте `supabase migration list --linked`; при расхождении остановитесь и согласуйте историю с фактически применённой схемой. Для нового пустого проекта из корня репозитория выполните:
 
    ```sh
    supabase login
