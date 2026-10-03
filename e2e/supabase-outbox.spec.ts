@@ -21,10 +21,21 @@ test('retries family writes and protects cloud schedule creation', async ({ brow
 	let petDeleteAttempts = 0;
 	let eventDeleteAttempts = 0;
 	let scheduleUpdateAttempts = 0;
+	let scheduleDraftUpdateAttempts = 0;
 	let scheduleDeleteAttempts = 0;
 	let scheduleInsertAttempts = 0;
 	let releaseFirstScheduleInsert: (() => void) | undefined;
 	const firstScheduleInsert = new Promise<void>((resolve) => { releaseFirstScheduleInsert = resolve; });
+	const scheduleRows: Record<string, unknown>[] = [{
+		id: '123e4567-e89b-12d3-a456-426614174003',
+		pet_id: '123e4567-e89b-12d3-a456-426614174002',
+		kind: 'meal',
+		title: 'Утреннее кормление',
+		local_time: '08:00:00',
+		weekdays: [0, 1, 2, 3, 4, 5, 6],
+		is_active: true
+	}];
+	const scheduleRequestIds: string[] = [];
 	const insertedEventIds: unknown[] = [];
 	const pageErrors: string[] = [];
 	page.on('pageerror', (error) => pageErrors.push(error.message));
@@ -119,38 +130,49 @@ test('retries family writes and protects cloud schedule creation', async ({ brow
 			return;
 		}
 		if (url.pathname === '/rest/v1/care_schedules' && request.method() === 'GET') {
-			await respond(200, [{
-				id: '123e4567-e89b-12d3-a456-426614174003',
-				pet_id: '123e4567-e89b-12d3-a456-426614174002',
-				kind: 'meal',
-				title: 'Утреннее кормление',
-				local_time: '08:00',
-				weekdays: [0, 1, 2, 3, 4, 5, 6],
-				is_active: true
-			}]);
+			const scheduleId = url.searchParams.get('id')?.replace(/^eq\./, '');
+			await respond(200, scheduleRows.filter((row) => !scheduleId || row.id === scheduleId));
 			return;
 		}
 		if (url.pathname === '/rest/v1/care_schedules' && request.method() === 'PATCH') {
+			const updates = request.postDataJSON() as Record<string, unknown>;
+			if ('title' in updates) {
+				scheduleDraftUpdateAttempts++;
+				const scheduleId = url.searchParams.get('id')?.replace(/^eq\./, '');
+				const existingSchedule = scheduleRows.find((row) => row.id === scheduleId);
+				if (existingSchedule) Object.assign(existingSchedule, { ...updates, local_time: `${updates.local_time}:00` });
+				await respond(200, existingSchedule ? [{ id: scheduleId }] : []);
+				return;
+			}
 			scheduleUpdateAttempts++;
 			await respond(200, []);
 			return;
 		}
 		if (url.pathname === '/rest/v1/care_schedules' && request.method() === 'POST') {
 			scheduleInsertAttempts++;
+			const payload = request.postDataJSON() as Record<string, unknown>;
+			const newSchedule = { ...payload, local_time: `${payload.local_time}:00`, created_by: testUser.id };
+			scheduleRequestIds.push(String(newSchedule.id));
 			if (scheduleInsertAttempts === 1) {
 				await firstScheduleInsert;
-				await respond(201, { id: '123e4567-e89b-12d3-a456-426614174005' });
-				return;
-			}
-			if (scheduleInsertAttempts === 2) {
-				await respond(503, { message: 'Schedule storage is temporarily unavailable.' });
-				return;
-			}
-			if (scheduleInsertAttempts === 3) {
+				scheduleRows.push(newSchedule);
 				await route.abort('failed');
 				return;
 			}
-			await respond(201, { id: '123e4567-e89b-12d3-a456-426614174006' });
+			if (scheduleInsertAttempts === 2) {
+				await respond(409, { code: '23505', message: 'Schedule already exists.' });
+				return;
+			}
+			if (scheduleInsertAttempts === 3) {
+				await respond(503, { message: 'Schedule storage is temporarily unavailable.' });
+				return;
+			}
+			if (scheduleInsertAttempts === 4) {
+				await route.abort('failed');
+				return;
+			}
+			scheduleRows.push(newSchedule);
+			await respond(201, { id: newSchedule.id });
 			return;
 		}
 		if (url.pathname === '/rest/v1/care_schedules' && request.method() === 'DELETE') {
@@ -267,22 +289,34 @@ test('retries family writes and protects cloud schedule creation', async ({ brow
 		await addScheduleButton.dispatchEvent('click');
 		expect(scheduleInsertAttempts).toBe(1);
 		releaseFirstScheduleInsert?.();
+		await expect(page.getByRole('status')).toHaveText('Не удалось сохранить напоминание');
+		await expect(page.locator('#schedule-title')).toHaveValue('Вечернее лекарство');
+		expect(scheduleRows.filter((row) => row.title === 'Вечернее лекарство')).toHaveLength(1);
+		await page.locator('#schedule-title').fill('Вечерняя таблетка');
+		await page.locator('#schedule-time').fill('21:10');
+		await addScheduleButton.click();
 		await expect(page.getByRole('status')).toHaveText('Напоминание добавлено');
-		await expect(page.getByRole('button', { name: 'Удалить напоминание: Вечернее лекарство' })).toBeVisible();
+		await expect(page.getByRole('button', { name: 'Удалить напоминание: Вечерняя таблетка' })).toBeVisible();
+		expect(scheduleInsertAttempts).toBe(2);
+		expect(scheduleRequestIds[1]).toBe(scheduleRequestIds[0]);
+		expect(scheduleDraftUpdateAttempts).toBe(1);
+		expect(scheduleRows.filter((row) => row.title === 'Вечерняя таблетка')).toHaveLength(1);
+		expect(scheduleRows.filter((row) => row.title === 'Вечернее лекарство')).toHaveLength(0);
+		expect(scheduleRows.find((row) => row.title === 'Вечерняя таблетка')?.local_time).toBe('21:10:00');
 
 		await page.locator('#schedule-title').fill('После прогулки');
 		await addScheduleButton.click();
 		await expect(page.getByRole('status')).toHaveText('Не удалось сохранить напоминание');
 		await expect(page.locator('#schedule-title')).toHaveValue('После прогулки');
-		expect(scheduleInsertAttempts).toBe(2);
+		expect(scheduleInsertAttempts).toBe(3);
 		await addScheduleButton.click();
 		await expect(page.getByRole('status')).toHaveText('Не удалось сохранить напоминание');
 		await expect(page.locator('#schedule-title')).toHaveValue('После прогулки');
-		expect(scheduleInsertAttempts).toBe(3);
+		expect(scheduleInsertAttempts).toBe(4);
 		await addScheduleButton.click();
 		await expect(page.getByRole('status')).toHaveText('Напоминание добавлено');
 		await expect(page.getByRole('button', { name: 'Удалить напоминание: После прогулки' })).toBeVisible();
-		expect(scheduleInsertAttempts).toBe(4);
+		expect(scheduleInsertAttempts).toBe(5);
 
 		const scheduleSwitch = page.getByRole('switch', { name: 'Выключить: Утреннее кормление' });
 		await scheduleSwitch.click();

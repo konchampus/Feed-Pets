@@ -61,6 +61,7 @@
 	let scheduleTime = $state('08:00');
 	let scheduleKind = $state<CareKind>('meal');
 	let scheduleSaving = $state(false);
+	let pendingScheduleRequest: { id: string; familyId: string; userId: string; petId: string } | null = null;
 	let petBirthday = $state('');
 	let petName = $state('');
 	let petBreed = $state('');
@@ -576,15 +577,31 @@
 		if (!activePet) return;
 		if (!scheduleTitle.trim()) { notify('Укажите, о чём напомнить'); return; }
 		if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(scheduleTime)) { notify('Укажите корректное время'); return; }
-		const row: CareSchedule = { id: crypto.randomUUID(), petId: activePet.id, kind: scheduleKind, title: scheduleTitle.trim(), time: scheduleTime, days: [0,1,2,3,4,5,6], enabled: true };
+		const context = getFamilyContext();
+		const scheduleTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+		const pendingRequest = pendingScheduleRequest?.familyId === familyId && pendingScheduleRequest.userId === context.userId && pendingScheduleRequest.petId === activePet.id ? pendingScheduleRequest : null;
+		const row: CareSchedule = { id: pendingRequest?.id ?? crypto.randomUUID(), petId: activePet.id, kind: scheduleKind, title: scheduleTitle.trim(), time: scheduleTime, days: [0,1,2,3,4,5,6], enabled: true };
 		if (supabase && familyId) {
-			const context = getFamilyContext();
+			pendingScheduleRequest = { id: row.id, familyId, userId: context.userId, petId: row.petId };
 			scheduleSaving = true;
 			try {
-				const { data, error } = await supabase.from('care_schedules').insert({ family_id: familyId, pet_id: row.petId, kind: row.kind, title: row.title, local_time: row.time, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone, weekdays: row.days }).select('id').single();
+				let { data, error } = await supabase.from('care_schedules').insert({ id: row.id, family_id: familyId, pet_id: row.petId, kind: row.kind, title: row.title, local_time: row.time, timezone: scheduleTimezone, weekdays: row.days }).select('id').single();
+				if (error?.code === '23505') {
+					const { data: existingSchedule, error: readError } = await supabase.from('care_schedules').select('family_id, pet_id, created_by, kind, title, local_time, timezone, weekdays').eq('id', row.id).maybeSingle();
+					const sameOwner = existingSchedule && existingSchedule.family_id === familyId && existingSchedule.pet_id === row.petId && existingSchedule.created_by === context.userId;
+					if (!readError && sameOwner) {
+						const sameRequest = existingSchedule.kind === row.kind && existingSchedule.title === row.title && String(existingSchedule.local_time).slice(0, 5) === row.time && existingSchedule.timezone === scheduleTimezone && Array.isArray(existingSchedule.weekdays) && existingSchedule.weekdays.join(',') === row.days.join(',');
+						if (sameRequest) { data = { id: row.id }; error = null; }
+						else {
+							const { data: updatedSchedule, error: updateError } = await supabase.from('care_schedules').update({ kind: row.kind, title: row.title, local_time: row.time, timezone: scheduleTimezone, weekdays: row.days }).eq('id', row.id).eq('family_id', familyId).select('id').maybeSingle();
+							if (!updateError && updatedSchedule) { data = { id: updatedSchedule.id }; error = null; }
+						}
+					}
+				}
 				if (!isCurrentFamilyContext(context)) return;
 				if (error || !data) { notify('Не удалось сохранить напоминание'); return; }
-				schedules = [...schedules, { ...row, id: data.id }]; saveSchedules(schedules); scheduleTitle = ''; notify('Напоминание добавлено');
+				pendingScheduleRequest = null;
+				schedules = [...schedules.filter((item) => item.id !== data.id), { ...row, id: data.id }]; saveSchedules(schedules); scheduleTitle = ''; notify('Напоминание добавлено');
 			} catch {
 				if (isCurrentFamilyContext(context)) notify('Не удалось сохранить напоминание');
 			} finally {
