@@ -17,6 +17,11 @@ test('retries a family event and push after the insert response is lost', async 
 	let serverEvents: Record<string, unknown>[] = [];
 	let insertAttempts = 0;
 	let pushAttempts = 0;
+	let petUpdateAttempts = 0;
+	let petDeleteAttempts = 0;
+	let eventDeleteAttempts = 0;
+	let scheduleUpdateAttempts = 0;
+	let scheduleDeleteAttempts = 0;
 	const insertedEventIds: unknown[] = [];
 	const pageErrors: string[] = [];
 	page.on('pageerror', (error) => pageErrors.push(error.message));
@@ -49,7 +54,7 @@ test('retries a family event and push after the insert response is lost', async 
 			await respond(200, [{ family_id: '123e4567-e89b-12d3-a456-426614174001', role: 'owner', families: { name: 'Семья' } }]);
 			return;
 		}
-		if (url.pathname === '/rest/v1/pets') {
+		if (url.pathname === '/rest/v1/pets' && request.method() === 'GET') {
 			await respond(200, [{
 				id: '123e4567-e89b-12d3-a456-426614174002',
 				name: 'Рада',
@@ -58,7 +63,30 @@ test('retries a family event and push after the insert response is lost', async 
 				photo_url: null,
 				allergies: '',
 				health_notes: ''
+			}, {
+				id: '123e4567-e89b-12d3-a456-426614174004',
+				name: 'Бета',
+				breed: 'Метис',
+				birthday: null,
+				photo_url: null,
+				allergies: '',
+				health_notes: ''
 			}]);
+			return;
+		}
+		if (url.pathname === '/rest/v1/pets' && request.method() === 'PATCH') {
+			petUpdateAttempts++;
+			await respond(200, []);
+			return;
+		}
+		if (url.pathname === '/rest/v1/pets' && request.method() === 'DELETE') {
+			petDeleteAttempts++;
+			await respond(200, []);
+			return;
+		}
+		if (url.pathname === '/rest/v1/care_events' && request.method() === 'DELETE') {
+			eventDeleteAttempts++;
+			await respond(200, []);
 			return;
 		}
 		if (url.pathname === '/rest/v1/care_events' && request.method() === 'GET') {
@@ -87,7 +115,25 @@ test('retries a family event and push after the insert response is lost', async 
 			await respond(201, []);
 			return;
 		}
-		if (url.pathname === '/rest/v1/care_schedules') {
+		if (url.pathname === '/rest/v1/care_schedules' && request.method() === 'GET') {
+			await respond(200, [{
+				id: '123e4567-e89b-12d3-a456-426614174003',
+				pet_id: '123e4567-e89b-12d3-a456-426614174002',
+				kind: 'meal',
+				title: 'Утреннее кормление',
+				local_time: '08:00',
+				weekdays: [0, 1, 2, 3, 4, 5, 6],
+				is_active: true
+			}]);
+			return;
+		}
+		if (url.pathname === '/rest/v1/care_schedules' && request.method() === 'PATCH') {
+			scheduleUpdateAttempts++;
+			await respond(200, []);
+			return;
+		}
+		if (url.pathname === '/rest/v1/care_schedules' && request.method() === 'DELETE') {
+			scheduleDeleteAttempts++;
 			await respond(200, []);
 			return;
 		}
@@ -175,6 +221,37 @@ test('retries a family event and push after the insert response is lost', async 
 		await expect.poll(() => pushAttempts).toBe(3);
 		expect(serverEvents).toHaveLength(2);
 		await expect.poll(() => page.evaluate(() => localStorage.getItem('lapki:family:123e4567-e89b-12d3-a456-426614174001:pendingPushEvents'))).toBe('[]');
+
+		await page.getByRole('button', { name: 'Настройки', exact: true }).click();
+		await page.getByRole('button', { name: 'Изменить профиль Рада', exact: true }).click();
+		await page.locator('#pet-name').fill('Рада новая');
+		await page.getByRole('button', { name: 'Сохранить изменения', exact: true }).click();
+		await expect(page.getByRole('status')).toHaveText('Не удалось изменить профиль собаки');
+		expect(petUpdateAttempts).toBe(1);
+		await page.getByRole('button', { name: 'Главная', exact: true }).click();
+		await expect(page.getByRole('heading', { name: 'День Рада' })).toBeVisible();
+		await page.getByRole('button', { name: 'История', exact: true }).click();
+		await page.getByRole('button', { name: 'Удалить запись' }).first().click();
+		await expect(page.getByRole('status')).toHaveText('Не удалось удалить запись');
+		expect(eventDeleteAttempts).toBe(1);
+		await expect(page.getByText('Кормление · 95 г', { exact: true })).toBeVisible();
+
+		await page.getByRole('button', { name: 'Расписание', exact: true }).click();
+		const scheduleSwitch = page.getByRole('switch', { name: 'Выключить: Утреннее кормление' });
+		await scheduleSwitch.click();
+		await expect(page.getByRole('status')).toHaveText('Не удалось обновить напоминание');
+		expect(scheduleUpdateAttempts).toBe(1);
+		await expect(scheduleSwitch).toHaveAttribute('aria-checked', 'true');
+		await page.getByRole('button', { name: 'Удалить напоминание: Утреннее кормление' }).click();
+		await expect(page.getByRole('status')).toHaveText('Не удалось удалить напоминание');
+		expect(scheduleDeleteAttempts).toBe(1);
+		await expect(page.getByText('Утреннее кормление', { exact: true })).toBeVisible();
+		await page.getByRole('button', { name: 'Настройки', exact: true }).click();
+		await page.getByRole('button', { name: 'Удалить профиль Рада', exact: true }).click();
+		await expect(page.getByRole('status')).toHaveText('Не удалось удалить профиль');
+		expect(petDeleteAttempts).toBe(1);
+		await expect(page.getByRole('button', { name: 'Изменить профиль Рада', exact: true })).toBeVisible();
+		expect(pageErrors).toEqual([]);
 	} finally {
 		await context.close();
 	}

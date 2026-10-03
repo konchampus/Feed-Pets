@@ -453,8 +453,8 @@
 		const context = getFamilyContext();
 		if (supabase && familyId) {
 			if (familyRole !== 'owner') { notify('Записи семьи удаляет владелец'); return; }
-			const { error } = await supabase.from('care_events').delete().eq('id', event.id);
-			if (error) { notify('Не удалось удалить запись'); return; }
+			const { data, error } = await supabase.from('care_events').delete().eq('id', event.id).select('id').maybeSingle();
+			if (error || !data) { notify('Не удалось удалить запись'); return; }
 		}
 		if (!isCurrentFamilyContext(context)) return;
 		updateEvents(events.filter((row) => row.id !== event.id)); notify('Запись удалена');
@@ -524,8 +524,8 @@
 		};
 		if (supabase && familyId) {
 			const context = getFamilyContext();
-			const { error } = await supabase.from('pets').update({ name: updatedPet.name, breed: updatedPet.breed, birthday: updatedPet.birthday || null, allergies: updatedPet.allergies, health_notes: updatedPet.healthNotes }).eq('id', pet.id);
-			if (error) { notify('Не удалось изменить профиль собаки'); return; }
+			const { data, error } = await supabase.from('pets').update({ name: updatedPet.name, breed: updatedPet.breed, birthday: updatedPet.birthday || null, allergies: updatedPet.allergies, health_notes: updatedPet.healthNotes }).eq('id', pet.id).select('id').maybeSingle();
+			if (error || !data) { notify('Не удалось изменить профиль собаки'); return; }
 			if (!isCurrentFamilyContext(context)) return;
 		}
 		pets = pets.map((item) => item.id === pet.id ? updatedPet : item);
@@ -556,8 +556,8 @@
 		const context = getFamilyContext();
 		if (supabase && familyId) {
 			if (familyRole !== 'owner') { notify('Профили собак меняет владелец семьи'); return; }
-			const { error } = await supabase.from('pets').delete().eq('id', petId);
-			if (error) { notify('Не удалось удалить профиль'); return; }
+			const { data, error } = await supabase.from('pets').delete().eq('id', petId).select('id').maybeSingle();
+			if (error || !data) { notify('Не удалось удалить профиль'); return; }
 		}
 		if (!isCurrentFamilyContext(context)) return;
 		pets = pets.filter((pet) => pet.id !== petId); events = events.filter((event) => event.petId !== petId); schedules = schedules.filter((item) => item.petId !== petId);
@@ -587,8 +587,8 @@
 		const schedule = schedules.find((item) => item.id === id);
 		if (supabase && familyId && familyRole !== 'owner') { notify('Расписание меняет владелец семьи'); return; }
 		if (supabase && familyId && schedule) {
-			const { error } = await supabase.from('care_schedules').update({ is_active: !schedule.enabled }).eq('id', id);
-			if (error) { notify('Не удалось обновить напоминание'); return; }
+			const { data, error } = await supabase.from('care_schedules').update({ is_active: !schedule.enabled }).eq('id', id).select('id').maybeSingle();
+			if (error || !data) { notify('Не удалось обновить напоминание'); return; }
 		}
 		if (!isCurrentFamilyContext(context)) return;
 		schedules = schedules.map((item) => item.id === id ? { ...item, enabled: !item.enabled } : item); saveSchedules(schedules);
@@ -598,8 +598,8 @@
 		const context = getFamilyContext();
 		if (supabase && familyId && familyRole !== 'owner') { notify('Расписание меняет владелец семьи'); return; }
 		if (supabase && familyId) {
-			const { error } = await supabase.from('care_schedules').delete().eq('id', id);
-			if (error) { notify('Не удалось удалить напоминание'); return; }
+			const { data, error } = await supabase.from('care_schedules').delete().eq('id', id).select('id').maybeSingle();
+			if (error || !data) { notify('Не удалось удалить напоминание'); return; }
 		}
 		if (!isCurrentFamilyContext(context)) return;
 		schedules = schedules.filter((item) => item.id !== id);
