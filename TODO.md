@@ -38,7 +38,7 @@
 - [x] После исправления редактирования queued-событий локально проверить check (0 ошибок/предупреждений), 16 unit-тестов, 13 E2E, Supabase outbox E2E с потерянным ответом/редактированием/push и production build; live Supabase отдельно не проверен.
 - [x] После защиты частичной отправки push локально проверить check, 21 unit-тест включая retry только неподтверждённых устройств/404/410 и защиту от удаления обновлённой подписки, 13 E2E, Supabase outbox E2E и production build; два независимых ревью кода завершены, live Supabase не настроен.
 - [ ] На CI проверить Deno Edge Functions, применить новую миграцию и повторить браузерный QA после публикации.
-- [x] Устранить причину Deno check: объявить `web-push` и `@types/web-push` как devDependencies, чтобы Deno 2 нашёл Edge Function imports в npm `node_modules`; локальный `deno check supabase/functions/*/index.ts` прошёл. Deno global-cache mode принудительно обращался к npm registry и падал в runner, поэтому CI использует установленный npm граф.
+- [x] Устранить причины Deno check: объявить `web-push` и `@types/web-push` как devDependencies для npm `node_modules`; изолировать проверку от SvelteKit tsconfig в `deno.json` с совместимым `moduleResolution`. Локальный `deno check supabase/functions/*/index.ts` прошёл.
 - [ ] После успешного CI/deploy независимо прокликать текущую публикацию на мобильном и desktop браузере двумя проверяющими.
 - [x] Опубликовать commit f252a5a: GitHub Actions build/deploy завершились успешно; главная и все 10 JS/CSS assets опубликованной страницы отвечают HTTP 200.
 - [x] Установить локальные зависимости с временным использованием настроенного системного proxy; `strict-ssl=true`, параметры proxy не сохранялись.
