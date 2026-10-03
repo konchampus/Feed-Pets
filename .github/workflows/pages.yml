@@ -96,8 +96,8 @@ jobs:
       - name: Build static site
         env:
           BASE_PATH: /${{ github.event.repository.name }}
-          PUBLIC_SUPABASE_URL: ${{ secrets.PUBLIC_SUPABASE_URL }}
-          PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.PUBLIC_SUPABASE_PUBLISHABLE_KEY || secrets.PUBLIC_SUPABASE_ANON_KEY }}
+          PUBLIC_SUPABASE_URL: ${{ secrets.PUBLIC_SUPABASE_URL || 'https://vrbcpasdqrmuaejtyvpo.supabase.co' }}
+          PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.PUBLIC_SUPABASE_PUBLISHABLE_KEY || secrets.PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_oOUV3cKwWoJqNvU9nglN-w_iMV7wAn4' }}
           PUBLIC_VAPID_KEY: ${{ secrets.PUBLIC_VAPID_KEY }}
         run: npm run build
       - name: Check Pages entry point
