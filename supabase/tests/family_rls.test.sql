@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(39);
+select plan(41);
 
 insert into auth.users (id, email) values
   ('10000000-0000-0000-0000-000000000001', 'owner-one@example.test'),
@@ -88,7 +88,10 @@ set local request.jwt.claim.sub = '10000000-0000-0000-0000-000000000001';
 select lives_ok($$insert into public.pets (id, family_id, name)
   values ('c0000000-0000-0000-0000-000000000003', 'a0000000-0000-0000-0000-000000000001', 'New pet')$$, 'an owner can add a family pet');
 select lives_ok($$update public.pets set name = 'Rex Updated' where id = 'c0000000-0000-0000-0000-000000000001'$$, 'an owner can update a family pet');
+select lives_ok($$insert into public.care_schedules (id, family_id, pet_id, created_by, kind, title, local_time)
+  values ('f0000000-0000-0000-0000-000000000003', 'a0000000-0000-0000-0000-000000000001', 'c0000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', 'meal', 'Evening meal', '18:00')$$, 'an owner can add a family schedule');
 select lives_ok($$update public.care_schedules set title = 'Evening meal' where id = 'f0000000-0000-0000-0000-000000000001'$$, 'an owner can update a family schedule');
+select lives_ok($$delete from public.care_schedules where id = 'f0000000-0000-0000-0000-000000000003'$$, 'an owner can delete a family schedule');
 select lives_ok($$delete from public.care_events where id = 'e0000000-0000-0000-0000-000000000002'$$, 'an owner can delete a members care event');
 select lives_ok($$delete from public.pets where id = 'c0000000-0000-0000-0000-000000000003'$$, 'an owner can delete a family pet');
 
