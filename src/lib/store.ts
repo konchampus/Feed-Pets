@@ -6,6 +6,13 @@ let dataScope = 'local';
 
 export function setDataScope(scope: string) { dataScope = scope; }
 
+export function clearDataScope(scope: string) {
+	if (typeof localStorage === 'undefined') return;
+	for (const key of ['pets', 'events', 'schedules', 'pendingEvents', 'pendingPushEvents']) {
+		localStorage.removeItem(scope === 'local' ? `lapki:${key}` : `lapki:${scope}:${key}`);
+	}
+}
+
 function read<T>(key: string, fallback: T): T {
 	if (typeof localStorage === 'undefined') return fallback;
 	try {

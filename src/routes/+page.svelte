@@ -2,9 +2,10 @@
 	import { onMount, tick } from 'svelte';
 	import { base } from '$app/paths';
 	import BowlScene from '$lib/BowlScene.svelte';
-	import { addEvent, flushPendingEvents, getEvents, getPendingEvents, getPendingPushEvents, getPets, getSchedules, isValidBackup, isValidCareAmount, legacyStarterPetId, mergePendingEvents, parseOptionalAmount, removePendingEvent, removePendingPushEvent, saveEvents, savePendingEvent, savePendingPushEvent, savePets, saveSchedules, setDataScope, todayMeals } from '$lib/store';
+	import { addEvent, clearDataScope, flushPendingEvents, getEvents, getPendingEvents, getPendingPushEvents, getPets, getSchedules, isValidBackup, isValidCareAmount, legacyStarterPetId, mergePendingEvents, parseOptionalAmount, removePendingEvent, removePendingPushEvent, saveEvents, savePendingEvent, savePendingPushEvent, savePets, saveSchedules, setDataScope, todayMeals } from '$lib/store';
 	import { careIcons, careLabels, type CareEvent, type CareKind, type CareSchedule, type Pet } from '$lib/types';
 	import { supabaseClient } from '$lib/supabase';
+	import { fetchAllPages } from '$lib/paginated-query';
 	import { PUBLIC_VAPID_KEY } from '$env/static/public';
 	import type { RealtimeChannel } from '@supabase/supabase-js';
 
@@ -24,6 +25,7 @@
 	let toast = $state('');
 	let familyLoadError = $state('');
 	let familyLoadPending = $state(false);
+	let exportingBackup = $state(false);
 	let amount = $state<string | number | undefined>('');
 	let label = $state('');
 	let note = $state('');
@@ -43,6 +45,7 @@
 	let inviteLink = $state('');
 	let inviteEmail = $state('');
 	let familyChannel: RealtimeChannel | null = null;
+	let familyRefreshTimer: ReturnType<typeof setTimeout>;
 	let familyLoadVersion = 0;
 	let sessionVersion = 0;
 	let pendingAuthSignOutVersion: number | null = null;
@@ -169,6 +172,7 @@
 			if (familyChannel && supabase) void supabase.removeChannel(familyChannel);
 			authListener?.unsubscribe();
 			clearTimeout(toastTimer);
+			clearTimeout(familyRefreshTimer);
 		};
 	});
 
@@ -335,9 +339,12 @@
 		}
 		const membership = membershipResult.data?.[0];
 		if (!membership) {
+			const revokedFamilyId = familyId;
 			familyId = ''; familyRole = ''; familyName = ''; familyUserId = activeUserId;
+			if (revokedFamilyId) clearDataScope(`family:${revokedFamilyId}`);
 			if (activeUserId) setDataScope(`user:${activeUserId}`);
 			pets = getPets(); events = getEvents(); schedules = getSchedules();
+			if (revokedFamilyId) notify('Доступ к семье прекращён; её локальный кэш удалён');
 			return finishFamilyLoad(true);
 		}
 		familyId = membership.family_id;
@@ -347,7 +354,7 @@
 		familyName = (membership.families as { name?: string } | null)?.name ?? '';
 		const results = await Promise.all([
 			supabase.from('pets').select('id,name,breed,birthday,photo_url,allergies,health_notes').eq('family_id', familyId),
-			supabase.from('care_events').select('id,pet_id,kind,occurred_at,author_id,actor_name,amount,unit,label,note').eq('family_id', familyId).order('occurred_at', { ascending: false }).limit(500),
+			fetchAllPages((from, to) => supabase.from('care_events').select('id,pet_id,kind,occurred_at,author_id,actor_name,amount,unit,label,note').eq('family_id', familyId).order('occurred_at', { ascending: false }).order('id', { ascending: true }).range(from, to)),
 			supabase.from('care_schedules').select('id,pet_id,kind,title,local_time,weekdays,is_active').eq('family_id', familyId)
 		]).catch(() => null);
 		if (!isCurrentLoad()) return finishFamilyLoad(false);
@@ -357,12 +364,12 @@
 			return finishFamilyLoad(false);
 		}
 		const [petResult, eventResult, scheduleResult] = results;
-		if (petResult.error || eventResult.error || scheduleResult.error) {
+		if (petResult.error || scheduleResult.error || !Array.isArray(eventResult)) {
 			pets = getPets(); events = getEvents(); schedules = getSchedules();
 			familyLoadError = 'Не удалось обновить семейные данные. Показана сохранённая копия; повторите загрузку.';
 			return finishFamilyLoad(false);
 		}
-		const serverEvents = eventResult.data.map((row) => ({ id: row.id, petId: row.pet_id, kind: row.kind, occurredAt: row.occurred_at, authorId: row.author_id, by: row.actor_name, amount: row.amount ? Number(row.amount) : undefined, unit: row.unit ?? undefined, label: row.label ?? undefined, note: row.note ?? undefined }));
+		const serverEvents = eventResult.map((row) => ({ id: row.id, petId: row.pet_id, kind: row.kind, occurredAt: row.occurred_at, authorId: row.author_id, by: row.actor_name, amount: row.amount ? Number(row.amount) : undefined, unit: row.unit ?? undefined, label: row.label ?? undefined, note: row.note ?? undefined }));
 		events = mergePendingEvents(serverEvents);
 		saveEvents(events);
 		const latestWeight = new Map<string, number>();
@@ -376,29 +383,13 @@
 		const channelVersion = loadVersion;
 		const channelFamilyId = familyId;
 		if (familyChannel) void supabase.removeChannel(familyChannel);
-		familyChannel = supabase.channel(`family:${familyId}`)
-			.on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'pets', filter: `family_id=eq.${familyId}` }, (change) => {
+		familyChannel = supabase.channel(`family:${familyId}`, { config: { private: true } })
+			.on('broadcast', { event: '*' }, () => {
 				if (familyLoadVersion !== channelVersion || familyId !== channelFamilyId) return;
-				const row = change.new as { id: string; name: string; breed: string; birthday: string | null; photo_url: string | null; allergies: string; health_notes: string };
-				pets = pets.map((pet) => pet.id === row.id ? { ...pet, name: row.name, breed: row.breed, birthday: row.birthday ?? '', photo: row.photo_url ?? undefined, allergies: row.allergies, healthNotes: row.health_notes } : pet);
-				savePets(pets);
+				clearTimeout(familyRefreshTimer);
+				familyRefreshTimer = setTimeout(() => void loadFamily(currentUserId), 150);
 			})
-			.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'care_events', filter: `family_id=eq.${familyId}` }, (change) => {
-			if (familyLoadVersion !== channelVersion || familyId !== channelFamilyId) return;
-			const row = change.new as { id: string; pet_id: string; kind: CareKind; occurred_at: string; author_id: string; actor_name: string; amount: number | null; unit: string | null; label: string | null; note: string | null };
-			if (events.some((item) => item.id === row.id)) return;
-			const newEvent: CareEvent = { id: row.id, petId: row.pet_id, kind: row.kind, occurredAt: row.occurred_at, authorId: row.author_id, by: row.actor_name, amount: row.amount ? Number(row.amount) : undefined, unit: row.unit ?? undefined, label: row.label ?? undefined, note: row.note ?? undefined };
-			const nextEvents = [newEvent, ...events];
-			updateEvents(nextEvents);
-			if (newEvent.kind === 'weight' && newEvent.amount) {
-				const latestWeight = nextEvents.filter((event) => event.petId === row.pet_id && event.kind === 'weight').reduce<CareEvent | undefined>((latest, event) => !latest || event.occurredAt > latest.occurredAt ? event : latest, undefined);
-				const latestAmount = latestWeight?.amount;
-				if (latestAmount) {
-					pets = pets.map((pet) => pet.id === row.pet_id ? { ...pet, weightKg: latestAmount } : pet);
-					savePets(pets);
-				}
-			}
-		}).subscribe();
+			.subscribe();
 		void syncPendingEvents(getFamilyContext());
 		return finishFamilyLoad(true);
 	}
@@ -800,9 +791,50 @@
 			signOutPending = false;
 		}
 	}
-	function exportData() {
-		const blob = new Blob([JSON.stringify({ exportedAt: new Date().toISOString(), pets, events, schedules }, null, 2)], { type: 'application/json' });
-		const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'lapki-backup.json'; a.click(); URL.revokeObjectURL(url); notify('Резервная копия скачана');
+	async function exportData() {
+		if (exportingBackup) return;
+		if (blockFamilyChanges()) return;
+		const context = getFamilyContext();
+		const backupFamilyId = familyId;
+		exportingBackup = true;
+		try {
+			let backupPets = pets;
+			let backupEvents = mergePendingEvents(events);
+			let backupSchedules = schedules;
+			if (supabase && backupFamilyId) {
+				const [petRows, eventRows, scheduleRows] = await Promise.all([
+					fetchAllPages((from, to) => supabase.from('pets').select('id,name,breed,birthday,photo_url,allergies,health_notes').eq('family_id', backupFamilyId).order('id').range(from, to)),
+					fetchAllPages((from, to) => supabase.from('care_events').select('id,pet_id,kind,occurred_at,author_id,actor_name,amount,unit,label,note').eq('family_id', backupFamilyId).order('occurred_at', { ascending: false }).order('id', { ascending: true }).range(from, to)),
+					fetchAllPages((from, to) => supabase.from('care_schedules').select('id,pet_id,kind,title,local_time,weekdays,is_active').eq('family_id', backupFamilyId).order('id').range(from, to))
+				]);
+				if (!isCurrentFamilyContext(context) || familyId !== backupFamilyId) {
+					notify('Создание копии отменено после смены семейного профиля');
+					return;
+				}
+				backupEvents = mergePendingEvents(eventRows.map((row) => ({ id: row.id, petId: row.pet_id, kind: row.kind, occurredAt: row.occurred_at, authorId: row.author_id, by: row.actor_name, amount: row.amount ? Number(row.amount) : undefined, unit: row.unit ?? undefined, label: row.label ?? undefined, note: row.note ?? undefined })));
+				const latestWeight = new Map<string, number>();
+				for (const event of backupEvents) {
+					if (event.kind === 'weight' && event.amount && !latestWeight.has(event.petId)) latestWeight.set(event.petId, event.amount);
+				}
+				backupPets = petRows.map((pet) => ({ id: pet.id, name: pet.name, breed: pet.breed, birthday: pet.birthday ?? '', photo: pet.photo_url ?? undefined, weightKg: latestWeight.get(pet.id) ?? 0, allergies: pet.allergies, healthNotes: pet.health_notes }));
+				backupSchedules = scheduleRows.map((row) => ({ id: row.id, petId: row.pet_id, kind: row.kind, title: row.title, time: String(row.local_time).slice(0, 5), days: row.weekdays, enabled: row.is_active }));
+			} else if (!isCurrentFamilyContext(context)) {
+				notify('Создание копии отменено после смены профиля');
+				return;
+			}
+			const blob = new Blob([JSON.stringify({ exportedAt: new Date().toISOString(), pets: backupPets, events: backupEvents, schedules: backupSchedules }, null, 2)], { type: 'application/json' });
+			const url = URL.createObjectURL(blob);
+			const link = document.createElement('a');
+			link.href = url;
+			link.download = 'lapki-backup.json';
+			link.click();
+			URL.revokeObjectURL(url);
+			notify('Полная резервная копия скачана');
+		} catch {
+			notify('Не удалось загрузить все данные для резервной копии. Повторите попытку.');
+		} finally {
+			exportingBackup = false;
+		}
 	}
 	function importData() { fileInput?.click(); }
 	async function readBackup(event: Event) {
@@ -988,7 +1020,7 @@
 							{/if}
 						</section>
 						<section class="settings-block"><div class="settings-heading"><div><h2>Ваши напоминания</h2><p>{pushEnabled ? 'Уведомления включены на этом устройстве.' : 'Нужны для событий семьи и расписания.'}</p></div><span>♧</span></div>{#if isConfigured}{#if familyId}<button class="secondary-button" onclick={() => pushEnabled ? void disablePush() : void enablePush()}>{pushEnabled ? 'Отключить уведомления' : 'Включить уведомления'}</button>{:else}<button class="secondary-button" onclick={() => { navigateToTab('settings'); settingsPanel = cloudUser ? 'profile' : 'auth'; }}>{cloudUser ? 'Создать семейный профиль' : 'Войти в семейный профиль'}</button>{/if}{:else}<p class="fine-print">Push пока не настроен. Нужны проект Supabase и ключ VAPID; шаги есть в README репозитория.</p>{/if}<p class="fine-print">На iPhone откройте сайт в Safari, добавьте его на экран «Домой» и включите уведомления внутри установленного PWA.</p></section>
-					</div><aside class="settings-side"><section class="settings-block"><div class="settings-heading"><div><h2>Внешний вид</h2><p>Легко для глаз и устройства</p></div><span>◐</span></div><label class="setting-toggle"><span>3D-миска</span><input type="checkbox" bind:checked={scene} onchange={() => localStorage.setItem('lapki:scene', String(scene))} /><i></i></label><label class="setting-toggle"><span>Звук отметки</span><input type="checkbox" bind:checked={soundEnabled} onchange={() => localStorage.setItem('lapki:sound', String(soundEnabled))} /><i></i></label><label class="setting-toggle"><span>Уменьшить анимацию</span><input type="checkbox" bind:checked={reducedMotion} onchange={() => localStorage.setItem('lapki:reduced-motion', String(reducedMotion))} /><i></i></label></section><section class="settings-block"><div class="settings-heading"><div><h2>Копия данных</h2><p>Храните свои записи в безопасности</p></div><span>↧</span></div><button class="secondary-button" onclick={exportData}>Скачать резервную копию</button><button class="quiet-button" disabled={Boolean(cloudUser)} onclick={importData}>Восстановить из файла</button><input bind:this={fileInput} class="sr-only" type="file" accept="application/json" onchange={readBackup} /><p class="fine-print">{cloudUser ? 'Для восстановления выйдите в локальный режим.' : 'На бесплатном тарифе Supabase нет автоматических резервных копий.'}</p></section><section class="settings-block info-block"><p class="overline">ПРИВАТНОСТЬ</p><p>Локальные данные остаются в этом браузере. Общий доступ появляется после подключения Supabase; записи защищены политиками доступа семьи.</p><a href="https://supabase.com/docs/guides/platform/free" target="_blank" rel="noreferrer">О бесплатном тарифе Supabase ↗</a></section></aside></div>
+					</div><aside class="settings-side"><section class="settings-block"><div class="settings-heading"><div><h2>Внешний вид</h2><p>Легко для глаз и устройства</p></div><span>◐</span></div><label class="setting-toggle"><span>3D-миска</span><input type="checkbox" bind:checked={scene} onchange={() => localStorage.setItem('lapki:scene', String(scene))} /><i></i></label><label class="setting-toggle"><span>Звук отметки</span><input type="checkbox" bind:checked={soundEnabled} onchange={() => localStorage.setItem('lapki:sound', String(soundEnabled))} /><i></i></label><label class="setting-toggle"><span>Уменьшить анимацию</span><input type="checkbox" bind:checked={reducedMotion} onchange={() => localStorage.setItem('lapki:reduced-motion', String(reducedMotion))} /><i></i></label></section><section class="settings-block"><div class="settings-heading"><div><h2>Копия данных</h2><p>Храните свои записи в безопасности</p></div><span>↧</span></div><button class="secondary-button" disabled={exportingBackup} onclick={exportData}>{exportingBackup ? 'Готовим копию…' : 'Скачать резервную копию'}</button><button class="quiet-button" disabled={Boolean(cloudUser)} onclick={importData}>Восстановить из файла</button><input bind:this={fileInput} class="sr-only" type="file" accept="application/json" onchange={readBackup} /><p class="fine-print">{cloudUser ? 'Для восстановления выйдите в локальный режим.' : 'На бесплатном тарифе Supabase нет автоматических резервных копий.'}</p></section><section class="settings-block info-block"><p class="overline">ПРИВАТНОСТЬ</p><p>Локальные данные остаются в этом браузере. Общий доступ появляется после подключения Supabase; записи защищены политиками доступа семьи.</p><a href="https://supabase.com/docs/guides/platform/free" target="_blank" rel="noreferrer">О бесплатном тарифе Supabase ↗</a></section></aside></div>
 			</section>
 		{/if}
 	</main>

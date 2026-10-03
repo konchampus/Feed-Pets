@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { addEvent, flushPendingEvents, getEvents, getPendingEvents, getPendingPushEvents, getPets, isValidBackup, isValidCareAmount, legacyStarterPetId, mergePendingEvents, parseOptionalAmount, removePendingEvent, removePendingPushEvent, saveEvents, savePendingEvent, savePendingPushEvent, savePets, setDataScope, todayMeals } from './store';
+import { addEvent, clearDataScope, flushPendingEvents, getEvents, getPendingEvents, getPendingPushEvents, getPets, isValidBackup, isValidCareAmount, legacyStarterPetId, mergePendingEvents, parseOptionalAmount, removePendingEvent, removePendingPushEvent, saveEvents, savePendingEvent, savePendingPushEvent, savePets, setDataScope, todayMeals } from './store';
 import type { CareEvent, Pet } from './types';
 
 afterEach(() => { localStorage.clear(); setDataScope('local'); vi.useRealTimers(); vi.unstubAllGlobals(); });
@@ -75,6 +75,17 @@ describe('care journal storage', () => {
 		setDataScope('family-b'); expect(getEvents()).toEqual([]);
 		setDataScope('local'); expect(getEvents()).toEqual([]);
 		setDataScope('family-a'); expect(getEvents()[0].id).toBe('a');
+	});
+
+	it('removes only the revoked family cache', () => {
+		const familyPet: Pet = { id: 'family-dog', name: 'Рада', breed: 'Метис', birthday: '', weightKg: 0, allergies: '', healthNotes: '' };
+		const privatePet = { ...familyPet, id: 'private-dog' };
+		setDataScope('family:family-a'); savePets([familyPet]);
+		setDataScope('user:user-a'); savePets([privatePet]);
+
+		clearDataScope('family:family-a');
+		setDataScope('user:user-a'); expect(getPets()).toEqual([privatePet]);
+		setDataScope('family:family-a'); expect(getPets()).toEqual([]);
 	});
 
 	it('keeps pending family events scoped and merges them with server events', () => {
