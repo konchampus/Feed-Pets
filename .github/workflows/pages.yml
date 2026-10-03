@@ -32,7 +32,7 @@ jobs:
         shell: bash
         run: |
           set +e
-          output="$(deno check --node-modules-dir=none supabase/functions/*/index.ts 2>&1)"
+          output="$(deno check supabase/functions/*/index.ts 2>&1)"
           result=$?
           printf '%s\n' "$output"
           if [ "$result" -ne 0 ]; then
