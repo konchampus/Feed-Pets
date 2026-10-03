@@ -37,7 +37,8 @@
 - [x] После отложенной загрузки Three.js выполнить check (0 ошибок/предупреждений), 10 unit-тестов, 13 E2E и production build; Three.js остался отдельным чанком 704.69 КБ / 181.05 КБ gzip.
 - [x] После исправления редактирования queued-событий локально проверить check (0 ошибок/предупреждений), 16 unit-тестов, 13 E2E, Supabase outbox E2E с потерянным ответом/редактированием/push и production build; live Supabase отдельно не проверен.
 - [x] После защиты частичной отправки push локально проверить check, 21 unit-тест включая retry только неподтверждённых устройств/404/410 и защиту от удаления обновлённой подписки, 13 E2E, Supabase outbox E2E и production build; два независимых ревью кода завершены, live Supabase не настроен.
-- [ ] На CI проверить Deno Edge Functions, применить новую миграцию и повторить браузерный QA после публикации.
+- [x] На CI проверить все Supabase Edge Functions и пройти полный check/unit/E2E/build/deploy (run `37121660447`, commit `6b5b62e`).
+- [ ] На живом Supabase применить новую migration частичной доставки push и проверить backend; аккаунт проекта пока не подключён.
 - [x] Устранить причины Deno check: объявить `web-push` и `@types/web-push` как devDependencies для npm `node_modules`; изолировать проверку от SvelteKit tsconfig в `deno.json` с совместимым `moduleResolution`. Локальный `deno check supabase/functions/*/index.ts` прошёл.
 - [ ] После успешного CI/deploy независимо прокликать текущую публикацию на мобильном и desktop браузере двумя проверяющими.
 - [x] Опубликовать commit f252a5a: GitHub Actions build/deploy завершились успешно; главная и все 10 JS/CSS assets опубликованной страницы отвечают HTTP 200.
