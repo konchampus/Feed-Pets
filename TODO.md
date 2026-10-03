@@ -40,7 +40,7 @@
 - [x] На CI проверить все Supabase Edge Functions и пройти полный check/unit/E2E/build/deploy (run `37121660447`, commit `6b5b62e`).
 - [ ] На живом Supabase применить новую migration частичной доставки push и проверить backend; аккаунт проекта пока не подключён.
 - [x] Устранить причины Deno check: объявить `web-push` и `@types/web-push` как devDependencies для npm `node_modules`; изолировать проверку от SvelteKit tsconfig в `deno.json` с совместимым `moduleResolution`. Локальный `deno check supabase/functions/*/index.ts` прошёл.
-- [ ] После успешного CI/deploy независимо прокликать текущую публикацию на мобильном и desktop браузере двумя проверяющими.
+- [x] После run `37121660447` два независимых проверяющих прокликали опубликованный сайт: Chromium 390×844 и 1365×900; создание собаки, кормления, редактирование, история, напоминание и настройки прошли без ошибок UI/запросов.
 - [x] Опубликовать commit f252a5a: GitHub Actions build/deploy завершились успешно; главная и все 10 JS/CSS assets опубликованной страницы отвечают HTTP 200.
 - [x] Установить локальные зависимости с временным использованием настроенного системного proxy; `strict-ssl=true`, параметры proxy не сохранялись.
 - [x] Создать `package-lock.json` без ослабления TLS; `npm ci --strict-ssl=true` переустанавливает пакеты по lockfile.
