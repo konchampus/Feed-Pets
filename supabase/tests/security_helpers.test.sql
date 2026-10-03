@@ -49,8 +49,8 @@ select ok(
     where grant_row.grantee = 0 and grant_row.privilege_type = 'EXECUTE'
   ),
   'only the auth trigger can execute the profile trigger function'
-  from pg_proc where oid = 'public.on_auth_user_created()'::regprocedure
-);
+)
+from pg_proc where oid = 'public.on_auth_user_created()'::regprocedure;
 select ok(
   exists (select 1 from pg_trigger where tgrelid = 'auth.users'::regclass and tgname = 'on_auth_user_created' and not tgisinternal),
   'the auth profile trigger remains installed'
