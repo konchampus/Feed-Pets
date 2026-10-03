@@ -244,7 +244,7 @@
 			closeCareForm(); notify('Запись исправлена'); return;
 		}
 		const event = addEvent({ petId: activePet.id, kind: sheetKind, by: member, authorId: currentUserId || undefined, amount: savedAmount, unit: sheetKind === 'meal' ? 'г' : sheetKind === 'walk' ? 'мин' : sheetKind === 'weight' ? 'кг' : undefined, label: label.trim() || undefined, note: note.trim() || undefined });
-		updateEvents(getEvents()); closeCareForm(); notify(`${careLabels[event.kind]} отмечено`);
+		updateEvents(getEvents()); closeCareForm(); notify(`Отметка «${careLabels[event.kind]}» сохранена`);
 		if (supabase && cloudUser) void syncEvent(event);
 	}
 	async function syncEvent(event: CareEvent) {

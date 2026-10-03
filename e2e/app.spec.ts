@@ -84,7 +84,7 @@ async function recordMeal(page: Page, grams: string) {
 	await dialog.getByRole('button', { name: 'Сохранить отметку' }).click();
 }
 
-test('opens dog journal and records a meal', async ({ page }) => {
+test('records care with a clear confirmation and shows it in history', async ({ page }) => {
 	page.on('pageerror', (error) => console.log(`Browser error: ${error.stack ?? error.message}`));
 	page.on('console', (message) => { if (message.type() === 'error') console.log(`Browser console: ${message.text()}`); });
 	await expect(page.getByRole('heading', { name: /привет, семья/i })).toBeVisible();
@@ -96,7 +96,15 @@ test('opens dog journal and records a meal', async ({ page }) => {
 	await dialog.locator('#care-amount').fill('75');
 	await page.getByRole('button', { name: 'Сохранить отметку' }).click();
 	await expect(page.getByText('Кормление · 75 г', { exact: true })).toBeVisible();
+	await expect(page.getByRole('status')).toHaveText('Отметка «Кормление» сохранена');
 	await expect(dialog).toHaveCount(0);
+	await page.getByRole('button', { name: 'Прогулка', exact: true }).click();
+	const walkDialog = page.getByRole('dialog');
+	await walkDialog.locator('#care-amount').fill('35');
+	await walkDialog.getByRole('button', { name: 'Сохранить отметку' }).click();
+	await expect(page.getByRole('status')).toHaveText('Отметка «Прогулка» сохранена');
+	await page.getByRole('button', { name: 'История', exact: true }).click();
+	await expect(page.getByText('Прогулка · 35 мин', { exact: true })).toBeVisible();
 });
 
 test('starts without a sample dog and lets the family add its own profile', async ({ page }) => {
