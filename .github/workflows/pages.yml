@@ -29,7 +29,7 @@ jobs:
           deno-version: v2.x
       - run: npm ci --no-audit --no-fund
       - name: Check Supabase Edge Functions
-        run: deno check supabase/functions/*/index.ts
+        run: deno check --node-modules-dir=none supabase/functions/*/index.ts
       - name: Check Svelte and TypeScript
         shell: bash
         run: |
