@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { createApiKeyFetch, getPublishableKey, getSecretKey } from '../_shared/api-keys.ts';
 import { checkLoginRateLimit } from '../_shared/login-rate-limit.ts';
 
 const corsHeaders = {
@@ -24,9 +25,10 @@ Deno.serve(async (request) => {
 		if (typeof username !== 'string' || typeof password !== 'string' || password.length > 128 || !/^[a-zA-Z0-9_.-]{3,32}$/.test(username)) return genericError();
 
 		const supabaseUrl = Deno.env.get('SUPABASE_URL');
-		const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-		if (!supabaseUrl || !serviceRoleKey) return Response.json({ error: 'Server is not configured' }, { status: 500, headers: jsonHeaders });
-		const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } });
+		const secretKey = getSecretKey();
+		const publishableKey = getPublishableKey();
+		if (!supabaseUrl || !secretKey || !publishableKey) return Response.json({ error: 'Server is not configured' }, { status: 500, headers: jsonHeaders });
+		const admin = createClient(supabaseUrl, secretKey, { global: { fetch: createApiKeyFetch(secretKey) }, auth: { persistSession: false, autoRefreshToken: false } });
 		const forwardedIps = request.headers.get('x-forwarded-for')?.split(',').map((ip) => ip.trim()) ?? [];
 		const clientIp = request.headers.get('cf-connecting-ip') ?? request.headers.get('x-real-ip') ?? forwardedIps.at(-1) ?? '';
 		const ipBucket = await hashValue(`ip:${clientIp}`);
@@ -40,13 +42,13 @@ Deno.serve(async (request) => {
 
 		const { data: profile } = await admin.from('profiles').select('user_id').eq('username', username.toLowerCase()).maybeSingle();
 		if (!profile) {
-			await createClient(supabaseUrl, Deno.env.get('SUPABASE_ANON_KEY') ?? '', { auth: { persistSession: false } }).auth.signInWithPassword({ email: 'unknown-account@invalid.lapki.local', password });
+			await createClient(supabaseUrl, publishableKey, { global: { fetch: createApiKeyFetch(publishableKey) }, auth: { persistSession: false } }).auth.signInWithPassword({ email: 'unknown-account@invalid.lapki.local', password });
 			return genericError();
 		}
 		const { data: userResult } = await admin.auth.admin.getUserById(profile.user_id);
 		const email = userResult.user?.email;
 		if (!email) { await hashValue(password); return genericError(); }
-		const { data, error } = await createClient(supabaseUrl, Deno.env.get('SUPABASE_ANON_KEY') ?? '', { auth: { persistSession: false } }).auth.signInWithPassword({ email, password });
+		const { data, error } = await createClient(supabaseUrl, publishableKey, { global: { fetch: createApiKeyFetch(publishableKey) }, auth: { persistSession: false } }).auth.signInWithPassword({ email, password });
 		if (error || !data.session) return genericError();
 		return Response.json({ session: data.session }, { headers: jsonHeaders });
 	} catch {

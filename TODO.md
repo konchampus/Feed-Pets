@@ -61,17 +61,20 @@
 - [x] Завершить независимый аудит исходников по RLS, приглашениям, авторизации и push; живой backend не подключён и запросами не проверен.
 - [x] Два независимых аудита кода и кликов опубликованного UI не нашли фиктивных локальных сценариев или тестового профиля собаки; внешние Supabase/OAuth/SMTP/Push функции явно показывают статус неподключённой конфигурации.
 - [x] Защитить сообщения об успехе облачных правок от нулевого количества строк: для редактирования/удаления событий, профилей и расписаний требовать возвращённую строку; Supabase E2E и два независимых браузерных прохода проверили 2 пустых PATCH и 3 пустых DELETE, UI оставляет исходные данные на месте.
+- [x] Поддержать актуальные Supabase Publishable/Secret key maps в Edge Functions с fallback для старых anon/service-role env; обновить имя клиентского ключа, Pages workflow и инструкции по развёртыванию и аккаунтной настройке.
+- [x] Для новых `sb_publishable_` / `sb_secret_` ключей оставлять API key только в `apikey`, удалять его только из совпадающего Bearer и сохранять пользовательский JWT; legacy key поведение не менять.
+- [x] После миграции ключей выполнить check (0 ошибок/предупреждений), 27 unit, 13 основных E2E, 1 Supabase outbox E2E, Deno check всех Edge Functions и production build. Unit-проверка вызывает установленный Supabase JS и проверяет заголовки Auth/PostgREST. Остаётся известное предупреждение о Three.js чанке 704.69 КБ.
 
 ## Нужны аккаунты и настройки
 
 - [ ] Создать Supabase-проект и применить миграции по порядку.
-- [ ] Добавить публичные GitHub Actions Secrets: `PUBLIC_SUPABASE_URL`, `PUBLIC_SUPABASE_ANON_KEY`, `PUBLIC_VAPID_KEY`.
+- [ ] Добавить GitHub Actions Secrets: `PUBLIC_SUPABASE_URL`, `PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `PUBLIC_VAPID_KEY` (старый `PUBLIC_SUPABASE_ANON_KEY` работает как переходный fallback).
 - [x] Настроить GitHub Pages → GitHub Actions и проверить deploy вместе с HTTP 200 главной (run `37017681400`).
 - [ ] Настроить Supabase Site URL/redirect URL с путём репозитория.
 - [ ] Настроить отдельный Gmail SMTP с App Password в Supabase и проверить письмо подтверждения/восстановления.
 - [ ] Создать Google OAuth client и добавить credentials в Supabase.
 - [ ] Создать VK ID OAuth app/custom provider `custom:vk-id`, включить PKCE и проверить вход.
-- [ ] Задать Supabase Edge secrets: `SUPABASE_SERVICE_ROLE_KEY`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, `CRON_SECRET`.
+- [ ] Задать пользовательские Supabase Edge secrets: `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, `CRON_SECRET`; ключи `SUPABASE_*` предоставляет сама платформа, их вручную добавлять не нужно.
 - [ ] Применить миграции Realtime для `care_events` и `pets`; проверить обновление профиля между двумя аккаунтами.
 - [ ] Настроить Supabase Cron раз в минуту и проверить время напоминания в часовом поясе устройства.
 - [ ] Проверить создание, срок действия и повторное использование приглашений на работающем backend.

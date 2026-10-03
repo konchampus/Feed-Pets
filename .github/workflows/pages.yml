@@ -17,6 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       PUBLIC_SUPABASE_URL: ''
+      PUBLIC_SUPABASE_PUBLISHABLE_KEY: not-configured
       PUBLIC_SUPABASE_ANON_KEY: ''
       PUBLIC_VAPID_KEY: ''
     steps:
@@ -76,7 +77,7 @@ jobs:
         env:
           BASE_PATH: /${{ github.event.repository.name }}
           PUBLIC_SUPABASE_URL: ${{ secrets.PUBLIC_SUPABASE_URL }}
-          PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.PUBLIC_SUPABASE_ANON_KEY }}
+          PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.PUBLIC_SUPABASE_PUBLISHABLE_KEY || secrets.PUBLIC_SUPABASE_ANON_KEY }}
           PUBLIC_VAPID_KEY: ${{ secrets.PUBLIC_VAPID_KEY }}
         run: npm run build
       - name: Check Pages entry point

@@ -12,6 +12,7 @@ export default defineConfig({
 		reuseExistingServer: false,
 		env: {
 			PUBLIC_SUPABASE_URL: 'https://outbox-test.supabase.co',
+			PUBLIC_SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_test-key',
 			PUBLIC_SUPABASE_ANON_KEY: 'test-anon-key',
 			PUBLIC_VAPID_KEY: ''
 		}

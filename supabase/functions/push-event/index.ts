@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { createApiKeyFetch, getPublishableKey, getSecretKey } from '../_shared/api-keys.ts';
 import { makePushClient, sendFamilyPush } from '../_shared/push.ts';
 import { serveWithCors } from '../_shared/cors.ts';
 
@@ -7,8 +8,8 @@ serveWithCors(async (request) => {
 	const authHeader = request.headers.get('Authorization');
 	if (!authHeader) return Response.json({ error: 'Authentication required' }, { status: 401 });
 	const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-	const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
-	const client = createClient(supabaseUrl, anonKey, { global: { headers: { Authorization: authHeader } }, auth: { persistSession: false } });
+	const publishableKey = getPublishableKey();
+	const client = createClient(supabaseUrl, publishableKey, { global: { fetch: createApiKeyFetch(publishableKey), headers: { Authorization: authHeader } }, auth: { persistSession: false } });
 	const { data: { user } } = await client.auth.getUser();
 	if (!user) return Response.json({ error: 'Authentication required' }, { status: 401 });
 	const { eventId } = await request.json();
@@ -16,7 +17,8 @@ serveWithCors(async (request) => {
 	const { data: event } = await client.from('care_events').select('id,family_id,author_id,actor_name,kind,amount,unit,pets(name)').eq('id', eventId).maybeSingle();
 	if (!event) return Response.json({ error: 'Event not found' }, { status: 404 });
 	if (event.author_id !== user.id) return Response.json({ error: 'Only the event author can notify family members' }, { status: 403 });
-	const admin = createClient(supabaseUrl, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false } });
+	const secretKey = getSecretKey();
+	const admin = createClient(supabaseUrl, secretKey, { global: { fetch: createApiKeyFetch(secretKey) }, auth: { persistSession: false } });
 	const { data: claimed, error: claimError } = await admin.rpc('claim_care_event_push', { target_event: event.id, requesting_user: user.id });
 	if (claimError) return Response.json({ error: 'Could not prepare notification' }, { status: 500 });
 	if (typeof claimed !== 'string') {
