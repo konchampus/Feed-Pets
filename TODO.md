@@ -71,6 +71,7 @@
 
 ## Локальная интеграционная среда
 
+- [ ] Проверить pgTAP-набор миграций и семейного RLS в GitHub Actions; локально Docker и Supabase CLI недоступны.
 - [ ] Запустить локальный Supabase для проверок настоящей базы и Edge Functions. Сейчас Docker, Podman и Supabase CLI не доступны в Windows PATH; WSL2 не может подключить диск Ubuntu с `E_ACCESSDENIED`.
 
 ## Нужны аккаунты и настройки

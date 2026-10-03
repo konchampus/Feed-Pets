@@ -13,7 +13,27 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  database:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v3
+        with:
+          version: 2.119.0
+      - name: Start local Supabase
+        shell: bash
+        run: |
+          if ! supabase start > "$RUNNER_TEMP/supabase-start.log" 2>&1; then
+            echo "::error::The local Supabase stack failed to start; its generated local credentials were suppressed."
+            exit 1
+          fi
+      - name: Test migrations and family RLS
+        run: supabase test db
+      - name: Lint database functions
+        run: supabase db lint --level error --schema public
+
   build:
+    needs: database
     runs-on: ubuntu-latest
     env:
       PUBLIC_SUPABASE_URL: ''
