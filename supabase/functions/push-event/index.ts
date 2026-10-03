@@ -24,14 +24,26 @@ serveWithCors(async (request) => {
 		if (statusError) return Response.json({ error: 'Could not check notification status' }, { status: 500 });
 		if (!delivery) return Response.json({ error: 'Only the event author can notify family members' }, { status: 403 });
 		if (delivery.sent_at) return Response.json({ sent: false, reason: 'already-sent' });
-		const retryAfter = Math.max(1, Math.ceil((new Date(delivery.claimed_at).getTime() + 30_000 - Date.now()) / 1000));
+		const retryAfter = Math.max(1, Math.ceil((new Date(delivery.claimed_at).getTime() + 180_000 - Date.now()) / 1000));
 		return Response.json({ error: 'Notification is already being sent' }, { status: 409, headers: { 'Retry-After': String(retryAfter) } });
 	}
 	const dogName = (event.pets as { name?: string } | null)?.name ?? 'собака';
 	const amount = event.amount ? `, ${event.amount} ${event.unit ?? ''}` : '';
 	const payload = { title: 'Новое в Лапках', body: `${event.actor_name}: ${event.kind}${amount} — ${dogName}`, url: './', tag: `care-${event.id}` };
 	try {
-		await sendFamilyPush(admin, makePushClient(), event.family_id, user.id, payload);
+		const { data: receipts, error: deliveryError } = await admin.from('push_delivery_receipts').select('subscription_id').eq('event_id', event.id);
+		if (deliveryError) throw deliveryError;
+		await sendFamilyPush(admin, makePushClient(), event.family_id, user.id, payload, {
+			deliveredSubscriptionIds: (receipts ?? []).map((receipt) => receipt.subscription_id),
+			markDelivered: async (subscriptionId) => {
+				const { data: recorded, error } = await admin.rpc('record_care_event_push_delivery', {
+					target_event: event.id,
+					claim_token: claimed,
+					target_subscription: subscriptionId
+				});
+				if (error || !recorded) throw error ?? new Error('Push claim is no longer active');
+			}
+		});
 		const { data: completed, error } = await admin.rpc('complete_care_event_push', { target_event: event.id, claim_token: claimed });
 		if (error || !completed) throw error ?? new Error('Push claim is no longer active');
 	} catch {

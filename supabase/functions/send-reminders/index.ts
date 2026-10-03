@@ -33,7 +33,20 @@ Deno.serve(async (request) => {
 			if (claimError || typeof claimed !== 'string') continue;
 			const dogName = (schedule.pets as { name?: string } | null)?.name ?? 'собака';
 			try {
-				await sendFamilyPush(admin, push, schedule.family_id, null, { title: 'Напоминание от Лапок', body: `${dogName}: ${schedule.title}`, url: './', tag: `schedule-${schedule.id}` });
+				const { data: receipts, error: deliveryError } = await admin.from('push_delivery_receipts').select('subscription_id').eq('schedule_id', schedule.id).eq('local_date', localDate);
+				if (deliveryError) throw deliveryError;
+				await sendFamilyPush(admin, push, schedule.family_id, null, { title: 'Напоминание от Лапок', body: `${dogName}: ${schedule.title}`, url: './', tag: `schedule-${schedule.id}` }, {
+					deliveredSubscriptionIds: (receipts ?? []).map((receipt) => receipt.subscription_id),
+					markDelivered: async (subscriptionId) => {
+						const { data: recorded, error } = await admin.rpc('record_care_schedule_push_delivery', {
+							target_schedule: schedule.id,
+							local_date: localDate,
+							claim_token: claimed,
+							target_subscription: subscriptionId
+						});
+						if (error || !recorded) throw error ?? new Error('Schedule claim is no longer active');
+					}
+				});
 				const { data: completed, error: completeError } = await admin.rpc('complete_care_schedule', { schedule_id: schedule.id, local_date: localDate, claim_token: claimed });
 				if (completeError || !completed) throw completeError ?? new Error('Schedule claim is no longer active');
 				sent++;
