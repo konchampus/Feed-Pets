@@ -48,7 +48,7 @@
 - [x] После исправлений переходов между аккаунтами локально проверить `npm run check`, 10 unit-тестов, 12 Playwright E2E, production build и `git diff --check`.
 - [x] Проверить переход workflow с `npm install` на `npm ci`; run `37039154983` прошёл.
 - [x] В GitHub Actions проверить `npm run check`, unit tests, Playwright E2E и `npm run build` (run `37027019676`, commit `d024db0`): проверки и публикация прошли.
-- [x] Настроить GitHub Pages → GitHub Actions. После первоначального 404 в Configure Pages прогоны `37027019676` и `37034437525` завершили настройку и deploy успешно; менять workflow не потребовалось.
+- [x] Настроить GitHub Pages → GitHub Actions. После первоначального 404 в Configure Pages прогоны `37027019676`, `37034437525` и `37135105035` завершили настройку и deploy успешно; менять workflow не потребовалось.
 - [x] Вынести `prerender = true` в `src/routes/+page.ts` и проверять в CI непустой `build/index.html`.
 - [x] Проверить опубликованную главную: HTTP 200; manifest, service worker и все найденные JS/CSS assets тоже отвечают HTTP 200.
 - [x] В ручной CUA-проверке открыть историю и расписание, создать кормление 125 г и подтвердить его в истории; создать ежедневное напоминание и подтвердить его отображение.
@@ -71,7 +71,7 @@
 
 ## Локальная интеграционная среда
 
-- [ ] Проверить pgTAP-набор миграций и семейного RLS в GitHub Actions; локально Docker и Supabase CLI недоступны.
+- [x] Проверить pgTAP-набор миграций и семейного RLS в GitHub Actions: run `37135105035` успешно прошёл `supabase start`, 39 pgTAP assertions, DB lint, сборку и Pages deploy. Локально Docker и Supabase CLI недоступны.
 - [ ] Запустить локальный Supabase для проверок настоящей базы и Edge Functions. Сейчас Docker, Podman и Supabase CLI не доступны в Windows PATH; WSL2 не может подключить диск Ubuntu с `E_ACCESSDENIED`.
 
 ## Нужны аккаунты и настройки
