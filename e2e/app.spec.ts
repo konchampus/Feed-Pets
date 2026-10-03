@@ -7,9 +7,12 @@ const testDog = {
 };
 
 test.beforeEach(async ({ page }) => {
+	await page.addInitScript((pet) => {
+		if (sessionStorage.getItem('e2e-seeded-dog')) return;
+		sessionStorage.setItem('e2e-seeded-dog', 'true');
+		localStorage.setItem('lapki:pets', JSON.stringify([pet]));
+	}, testDog);
 	await page.goto('/');
-	await page.evaluate((pet) => localStorage.setItem('lapki:pets', JSON.stringify([pet])), testDog);
-	await page.reload();
 	await expect(page.locator('.app-shell')).toHaveAttribute('data-ready', 'true');
 });
 
