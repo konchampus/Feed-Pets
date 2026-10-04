@@ -141,7 +141,8 @@
 - [x] Добавить проверки выбора ближайшего расписания, отключения push и пагинации.
 - [x] Проверить изменения: `npm run check` — 0 ошибок/предупреждений; `npm test` — 39 unit и 15 Playwright E2E; `npm run test:e2e:supabase` — 1/1; `npm run build` и `git diff --check` прошли.
 - [x] Два независимых ревью кода не обнаружили блокирующих замечаний. Локальный Deno отсутствует; проверка Edge Functions остаётся обязательной в GitHub Actions.
-- [ ] Закоммитить и отправить текущие исправления, дождаться успешных database/build/Pages deploy jobs.
+- [x] По run #86 исправить типизацию курсора: await Supabase query builder внутри callback и явно вернуть типизированный page result; targeted unit 2/2 и `npm run check` прошли. Run #86 подтвердил database, но Edge Function Deno check остановил build до deploy.
+- [ ] Отправить исправление Deno-типа отдельным коммитом и дождаться успешных database/build/Pages deploy jobs.
 - [ ] После deploy поручить двум независимым агентам проверить опубликованную страницу реальными UI-кликами в отдельных desktop/mobile контекстах.
 - [ ] Сохранить wildcard redirect в Supabase Dashboard после восстановления управления вкладкой и подтвердить значение повторным открытием формы.
 - [ ] Повторить оставшиеся проверки реальных аккаунтов, семейного Realtime, сервера Push, Cron и установленного iPhone PWA из пунктов выше.

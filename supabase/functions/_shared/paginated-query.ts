@@ -1,7 +1,7 @@
 const defaultPageSize = 500;
 
 export async function fetchAllPages<T extends { id: string }>(
-	loadPage: (afterId: string | null, pageSize: number) => PromiseLike<{ data: T[] | null; error: unknown }>,
+	loadPage: (afterId: string | null, pageSize: number) => Promise<{ data: T[] | null; error: unknown }>,
 	pageSize = defaultPageSize
 ) {
 	if (!Number.isInteger(pageSize) || pageSize < 1) throw new Error('Page size must be a positive integer');

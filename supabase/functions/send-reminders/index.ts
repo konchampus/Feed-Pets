@@ -33,11 +33,12 @@ Deno.serve(async (request) => {
 	const admin = createClient(Deno.env.get('SUPABASE_URL')!, secretKey, { global: { fetch: createApiKeyFetch(secretKey) }, auth: { persistSession: false } });
 	let schedules: ReminderSchedule[];
 	try {
-		schedules = await fetchAllPages<ReminderSchedule>((afterId, pageSize) => {
+		schedules = await fetchAllPages<ReminderSchedule>(async (afterId, pageSize) => {
 			let query = admin.from('care_schedules').select('id,family_id,pet_id,kind,title,local_time,timezone,weekdays,last_notified_for,pets(name),created_by')
 				.eq('is_active', true).order('id', { ascending: true });
 			if (afterId) query = query.gt('id', afterId);
-			return query.limit(pageSize);
+			const { data, error } = await query.limit(pageSize);
+			return { data: data as ReminderSchedule[] | null, error };
 		});
 	} catch {
 		return Response.json({ error: 'Could not load schedules' }, { status: 500 });
