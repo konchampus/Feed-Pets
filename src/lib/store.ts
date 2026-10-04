@@ -184,7 +184,14 @@ function isCareSchedule(value: unknown): value is CareSchedule {
 	if (!isRecord(value) || !isNonEmptyString(value.id) || !isNonEmptyString(value.petId)
 		|| !isCareKind(value.kind) || !isNonEmptyString(value.title)
 		|| typeof value.time !== 'string' || !/^([01]\d|2[0-3]):[0-5]\d$/.test(value.time)
-		|| !Array.isArray(value.days) || value.days.length === 0 || typeof value.enabled !== 'boolean') return false;
+		|| !Array.isArray(value.days) || value.days.length === 0 || typeof value.enabled !== 'boolean'
+		|| (value.timezone !== undefined && !isValidTimeZone(value.timezone))) return false;
 	return value.days.every((day) => Number.isInteger(day) && day >= 0 && day <= 6)
 		&& new Set(value.days).size === value.days.length;
+}
+
+function isValidTimeZone(value: unknown): value is string {
+	if (typeof value !== 'string' || !value.trim()) return false;
+	try { new Intl.DateTimeFormat('en-US', { timeZone: value }); return true; }
+	catch { return false; }
 }

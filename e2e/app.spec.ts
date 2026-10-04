@@ -344,10 +344,43 @@ test('shows the nearest future reminder on the home screen', async ({ page }) =>
 	await page.getByRole('button', { name: 'Главная', exact: true }).click();
 	const reminderCard = page.locator('.reminder-card');
 	await expect(reminderCard.locator('strong')).toHaveText('Вечерняя прогулка');
-	await expect(reminderCard.locator('small')).toHaveText('Сегодня · 19:00');
+	const deviceTimeZone = await page.evaluate(() => Intl.DateTimeFormat().resolvedOptions().timeZone);
+	await expect(reminderCard.locator('small')).toHaveText(`Сегодня · 19:00 · ${deviceTimeZone}`);
+});
+
+test('shows a family schedule in the timezone saved with it', async ({ browser }) => {
+	const context = await browser.newContext({ timezoneId: 'Pacific/Honolulu', viewport: { width: 1365, height: 900 } });
+	const page = await context.newPage();
+	await page.addInitScript((pet) => {
+		const originalDate = Date;
+		const fixedTime = originalDate.parse('2026-01-15T09:00:00.000Z');
+		const fixedDate = new Proxy(originalDate, {
+			construct(target, args) { return Reflect.construct(target, args.length ? args : [fixedTime]); },
+			apply() { return new originalDate(fixedTime).toString(); }
+		});
+		Object.defineProperty(fixedDate, 'now', { value: () => fixedTime });
+		Object.defineProperty(window, 'Date', { value: fixedDate });
+		localStorage.setItem('lapki:pets', JSON.stringify([pet]));
+		localStorage.setItem('lapki:schedules', JSON.stringify([{
+			id: 'tokyo-evening', petId: 'e2e-dog', kind: 'meal', title: 'Вечерний корм', time: '19:00', timezone: 'Asia/Tokyo',
+			days: [0, 1, 2, 3, 4, 5, 6], enabled: true
+		}]));
+	}, testDog);
+	await page.goto('http://127.0.0.1:4173/');
+	await expect(page.locator('.app-shell')).toHaveAttribute('data-ready', 'true');
+	await expect(page.locator('.reminder-card small')).toHaveText('Сегодня · 19:00 · Asia/Tokyo');
+	await page.getByRole('button', { name: 'Расписание', exact: true }).click();
+	await expect(page.locator('.schedule-timezone')).toHaveText('Пояс: Asia/Tokyo');
+	await context.close();
 });
 
 test('exports a backup, restores it, and rejects invalid backup data', async ({ page }, testInfo) => {
+	await page.evaluate(() => localStorage.setItem('lapki:schedules', JSON.stringify([{
+		id: 'tokyo-evening', petId: 'e2e-dog', kind: 'meal', title: 'Вечерний корм', time: '19:00', timezone: 'Asia/Tokyo',
+		days: [0, 1, 2, 3, 4, 5, 6], enabled: true
+	}])));
+	await page.reload();
+	await expect(page.locator('.app-shell')).toHaveAttribute('data-ready', 'true');
 	await recordMeal(page, '90');
 	await page.getByRole('button', { name: 'Настройки', exact: true }).click();
 	const downloadPromise = page.waitForEvent('download');
@@ -356,9 +389,10 @@ test('exports a backup, restores it, and rejects invalid backup data', async ({ 
 	expect(download.suggestedFilename()).toBe('lapki-backup.json');
 	const backupPath = await download.path();
 	if (!backupPath) throw new Error('The browser did not save the backup download');
-	const backup = JSON.parse(await readFile(backupPath, 'utf8')) as { pets: unknown[]; events: unknown[] };
+	const backup = JSON.parse(await readFile(backupPath, 'utf8')) as { pets: unknown[]; events: unknown[]; schedules: Array<{ timezone?: string }> };
 	expect(backup.pets).toHaveLength(1);
 	expect(backup.events).toHaveLength(1);
+	expect(backup.schedules).toContainEqual(expect.objectContaining({ timezone: 'Asia/Tokyo' }));
 
 	await page.getByRole('button', { name: 'История', exact: true }).click();
 	await page.getByRole('button', { name: 'Удалить запись' }).click();
@@ -367,6 +401,8 @@ test('exports a backup, restores it, and rejects invalid backup data', async ({ 
 	await page.getByRole('button', { name: 'Восстановить из файла' }).click();
 	await page.locator('input[type="file"]').setInputFiles(backupPath);
 	await expect(page.getByRole('status')).toHaveText('Данные восстановлены');
+	await page.getByRole('button', { name: 'Расписание', exact: true }).click();
+	await expect(page.locator('.schedule-timezone')).toHaveText('Пояс: Asia/Tokyo');
 	await page.getByRole('button', { name: 'История', exact: true }).click();
 	await expect(page.getByText('Кормление · 90 г', { exact: true })).toBeVisible();
 

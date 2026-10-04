@@ -36,4 +36,38 @@ describe('next care schedule', () => {
 
 		expect(findNextSchedule(schedules, 'dog-1', now)).toBeNull();
 	});
+
+	it('uses the saved schedule timezone for both local date and weekday', () => {
+		const schedule = { ...makeSchedule('tokyo-evening', '19:00', [4]), timezone: 'Asia/Tokyo' };
+		const now = new Date('2026-01-15T09:00:00.000Z');
+
+		expect(findNextSchedule([schedule], 'dog-1', now)?.nextAt.toISOString()).toBe('2026-01-15T10:00:00.000Z');
+	});
+
+	it('moves to the next selected weekday after its schedule-zone time passes', () => {
+		const schedule = { ...makeSchedule('tokyo-friday', '19:00', [5]), timezone: 'Asia/Tokyo' };
+		const now = new Date('2026-01-15T14:00:00.000Z');
+
+		expect(findNextSchedule([schedule], 'dog-1', now)?.nextAt.toISOString()).toBe('2026-01-16T10:00:00.000Z');
+	});
+
+	it('resolves a missing spring-forward wall time to the first valid minute after the gap', () => {
+		const schedule = { ...makeSchedule('spring-gap', '02:30', [0]), timezone: 'America/New_York' };
+		const now = new Date('2026-03-08T06:00:00.000Z');
+
+		expect(findNextSchedule([schedule], 'dog-1', now)?.nextAt.toISOString()).toBe('2026-03-08T07:00:00.000Z');
+	});
+
+	it('uses the first occurrence of an ambiguous fall-back wall time', () => {
+		const schedule = { ...makeSchedule('fall-back', '01:30', [0]), timezone: 'America/New_York' };
+		const now = new Date('2026-11-01T04:00:00.000Z');
+
+		expect(findNextSchedule([schedule], 'dog-1', now)?.nextAt.toISOString()).toBe('2026-11-01T05:30:00.000Z');
+	});
+
+	it('skips an unrecognized saved timezone', () => {
+		const schedule = { ...makeSchedule('unknown-zone', '13:00'), timezone: 'Mars/Olympus' };
+
+		expect(findNextSchedule([schedule], 'dog-1', new Date('2026-01-15T09:00:00.000Z'))).toBeNull();
+	});
 });

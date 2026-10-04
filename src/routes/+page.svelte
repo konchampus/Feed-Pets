@@ -7,7 +7,7 @@
 	import { careIcons, careLabels, type CareEvent, type CareKind, type CareSchedule, type Pet } from '$lib/types';
 	import { supabaseClient } from '$lib/supabase';
 	import { fetchAllPages } from '$lib/paginated-query';
-	import { findNextSchedule } from '$lib/schedule';
+	import { findNextSchedule, getZonedDateParts } from '$lib/schedule';
 	import { removePushSubscription } from '$lib/push-subscription';
 	import { PUBLIC_VAPID_KEY } from '$env/static/public';
 	import type { RealtimeChannel } from '@supabase/supabase-js';
@@ -65,7 +65,7 @@
 	let scheduleTime = $state('08:00');
 	let scheduleKind = $state<CareKind>('meal');
 	let scheduleSaving = $state(false);
-	let pendingScheduleRequest: { id: string; familyId: string; userId: string; petId: string } | null = null;
+	let pendingScheduleRequest: { id: string; familyId: string; userId: string; petId: string; timezone: string } | null = null;
 	let petBirthday = $state('');
 	let petName = $state('');
 	let petBreed = $state('');
@@ -379,7 +379,7 @@
 				return query.limit(pageSize);
 			}),
 			fetchAllPages((afterId, pageSize) => {
-				let query = supabase.from('care_schedules').select('id,pet_id,kind,title,local_time,weekdays,is_active').eq('family_id', familyId).order('id', { ascending: true });
+				let query = supabase.from('care_schedules').select('id,pet_id,kind,title,local_time,timezone,weekdays,is_active').eq('family_id', familyId).order('id', { ascending: true });
 				if (afterId) query = query.gt('id', afterId);
 				return query.limit(pageSize);
 			})
@@ -400,7 +400,7 @@
 		}
 		pets = petRows.map((pet) => ({ id: pet.id, name: pet.name, breed: pet.breed, birthday: pet.birthday ?? '', photo: pet.photo_url ?? undefined, weightKg: latestWeight.get(pet.id) ?? 0, allergies: pet.allergies, healthNotes: pet.health_notes }));
 		petIndex = 0; savePets(pets);
-		schedules = scheduleRows.map((row) => ({ id: row.id, petId: row.pet_id, kind: row.kind, title: row.title, time: String(row.local_time).slice(0, 5), days: row.weekdays, enabled: row.is_active }));
+		schedules = scheduleRows.map((row) => ({ id: row.id, petId: row.pet_id, kind: row.kind, title: row.title, time: String(row.local_time).slice(0, 5), timezone: row.timezone, days: row.weekdays, enabled: row.is_active }));
 		saveSchedules(schedules);
 		const channelVersion = loadVersion;
 		const channelFamilyId = familyId;
@@ -590,11 +590,12 @@
 		if (!scheduleTitle.trim()) { notify('Укажите, о чём напомнить'); return; }
 		if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(scheduleTime)) { notify('Укажите корректное время'); return; }
 		const context = getFamilyContext();
-		const scheduleTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+		const currentTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 		const pendingRequest = pendingScheduleRequest?.familyId === familyId && pendingScheduleRequest.userId === context.userId && pendingScheduleRequest.petId === activePet.id ? pendingScheduleRequest : null;
-		const row: CareSchedule = { id: pendingRequest?.id ?? crypto.randomUUID(), petId: activePet.id, kind: scheduleKind, title: scheduleTitle.trim(), time: scheduleTime, days: [0,1,2,3,4,5,6], enabled: true };
+		const scheduleTimezone = pendingRequest?.timezone ?? currentTimeZone;
+		const row: CareSchedule = { id: pendingRequest?.id ?? crypto.randomUUID(), petId: activePet.id, kind: scheduleKind, title: scheduleTitle.trim(), time: scheduleTime, timezone: scheduleTimezone, days: [0,1,2,3,4,5,6], enabled: true };
 		if (supabase && familyId) {
-			pendingScheduleRequest = { id: row.id, familyId, userId: context.userId, petId: row.petId };
+			pendingScheduleRequest = { id: row.id, familyId, userId: context.userId, petId: row.petId, timezone: scheduleTimezone };
 			scheduleSaving = true;
 			try {
 				let { data, error } = await supabase.from('care_schedules').insert({ id: row.id, family_id: familyId, pet_id: row.petId, kind: row.kind, title: row.title, local_time: row.time, timezone: scheduleTimezone, weekdays: row.days }).select('id').single();
@@ -655,11 +656,16 @@
 	function nextScheduleTime() {
 		if (!nextSchedule) return 'Добавьте расписание ухода';
 		const nextAt = nextSchedule.nextAt;
+		const timeZone = nextSchedule.schedule.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone ?? 'UTC';
+		const currentParts = getZonedDateParts(currentTime, timeZone);
+		const nextParts = getZonedDateParts(nextAt, timeZone);
+		const dayOffset = (Date.UTC(nextParts.year, nextParts.month - 1, nextParts.day) - Date.UTC(currentParts.year, currentParts.month - 1, currentParts.day)) / 86_400_000;
 		let dateLabel: string;
-		if (nextAt.toDateString() === currentTime.toDateString()) dateLabel = 'Сегодня';
-		else if (nextAt.toDateString() === new Date(currentTime.getFullYear(), currentTime.getMonth(), currentTime.getDate() + 1).toDateString()) dateLabel = 'Завтра';
-		else dateLabel = new Intl.DateTimeFormat('ru-RU', { weekday: 'short', day: 'numeric', month: 'short' }).format(nextAt);
-		return `${dateLabel} · ${timeOf(nextAt.toISOString())}`;
+		if (dayOffset === 0) dateLabel = 'Сегодня';
+		else if (dayOffset === 1) dateLabel = 'Завтра';
+		else dateLabel = new Intl.DateTimeFormat('ru-RU', { timeZone, weekday: 'short', day: 'numeric', month: 'short' }).format(nextAt);
+		const timeLabel = new Intl.DateTimeFormat('ru-RU', { timeZone, hour: '2-digit', minute: '2-digit' }).format(nextAt);
+		return `${dateLabel} · ${timeLabel} · ${timeZone}`;
 	}
 	function dayOf(iso: string) { return new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'short' }).format(new Date(iso)); }
 	function playSound() {
@@ -875,7 +881,7 @@
 						return query.limit(pageSize);
 					}),
 					fetchAllPages((afterId, pageSize) => {
-						let query = supabase.from('care_schedules').select('id,pet_id,kind,title,local_time,weekdays,is_active').eq('family_id', backupFamilyId).lte('created_at', exportStartedAt).order('id', { ascending: true });
+						let query = supabase.from('care_schedules').select('id,pet_id,kind,title,local_time,timezone,weekdays,is_active').eq('family_id', backupFamilyId).lte('created_at', exportStartedAt).order('id', { ascending: true });
 						if (afterId) query = query.gt('id', afterId);
 						return query.limit(pageSize);
 					})
@@ -890,7 +896,7 @@
 					if (event.kind === 'weight' && event.amount && !latestWeight.has(event.petId)) latestWeight.set(event.petId, event.amount);
 				}
 				backupPets = petRows.map((pet) => ({ id: pet.id, name: pet.name, breed: pet.breed, birthday: pet.birthday ?? '', photo: pet.photo_url ?? undefined, weightKg: latestWeight.get(pet.id) ?? 0, allergies: pet.allergies, healthNotes: pet.health_notes }));
-				backupSchedules = scheduleRows.map((row) => ({ id: row.id, petId: row.pet_id, kind: row.kind, title: row.title, time: String(row.local_time).slice(0, 5), days: row.weekdays, enabled: row.is_active }));
+				backupSchedules = scheduleRows.map((row) => ({ id: row.id, petId: row.pet_id, kind: row.kind, title: row.title, time: String(row.local_time).slice(0, 5), timezone: row.timezone, days: row.weekdays, enabled: row.is_active }));
 			} else if (!isCurrentFamilyContext(context)) {
 				notify('Создание копии отменено после смены профиля');
 				return;
@@ -1023,14 +1029,14 @@
 						{#each schedules.filter((row) => row.petId === activePet?.id) as row}
 							<article class:disabled={!row.enabled} class="schedule-row">
 								<div class="schedule-symbol">{careIcons[row.kind]}</div>
-								<div><strong>{row.title}</strong><span>{careLabels[row.kind]} · каждый день</span></div>
+								<div><strong>{row.title}</strong><span>{careLabels[row.kind]} · каждый день</span>{#if row.timezone}<small class="schedule-timezone">Пояс: {row.timezone}</small>{/if}</div>
 								<time>{row.time}</time>
 								<button role="switch" aria-checked={row.enabled} class:toggle-on={row.enabled} class="toggle" aria-label={row.enabled ? `Выключить: ${row.title}` : `Включить: ${row.title}`} disabled={Boolean(supabase && familyId && familyRole !== 'owner')} onclick={() => void toggleSchedule(row.id)}><i></i></button>
 								{#if !supabase || !familyId || familyRole === 'owner'}<button class="schedule-delete" aria-label={`Удалить напоминание: ${row.title}`} onclick={() => void removeSchedule(row.id)}>×</button>{/if}
 							</article>
 						{/each}
 					</div>
-				{:else}<div class="empty-line wide"><span>◷</span><p>Добавьте повторяющееся напоминание для кормления, лекарств или визита.</p></div>{/if}<p class="timezone-note">Время указано по часовому поясу этого устройства. {!familyId ? 'Расписание сохранено только здесь и не отправляет уведомления.' : 'Для доставки push нужны подписка на устройстве и настроенные VAPID и Cron в Supabase.'}</p>
+				{:else}<div class="empty-line wide"><span>◷</span><p>Добавьте повторяющееся напоминание для кормления, лекарств или визита.</p></div>{/if}<p class="timezone-note">Время каждого напоминания считается в сохранённом часовом поясе. {!familyId ? 'Локальное расписание сохранено только здесь и не отправляет уведомления.' : 'Семейные push используют сохранённый пояс; для доставки нужны подписка на устройстве и настроенные VAPID и Cron в Supabase.'}</p>
 				{:else}<div class="empty-state"><span>◷</span><h2>Сначала добавьте собаку</h2><p>{legacyScheduleCount ? `Сохранено напоминаний: ${legacyScheduleCount}. Они останутся и привяжутся к собаке после добавления профиля.` : 'Расписание ухода будет привязано к профилю собаки.'}</p>{#if familyRole !== 'member'}<button class="primary-button" onclick={openPetSetup}>Добавить собаку</button>{/if}</div>{/if}
 			</section>
 		{:else}

@@ -30,6 +30,7 @@ export type CareSchedule = {
 	kind: CareKind;
 	title: string;
 	time: string;
+	timezone?: string;
 	days: number[];
 	enabled: boolean;
 };

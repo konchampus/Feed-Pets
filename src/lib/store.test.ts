@@ -43,9 +43,10 @@ describe('care journal storage', () => {
 		const backup = {
 			pets: [{ id: 'milo', name: 'Мило', breed: 'Корги', birthday: '2022-04-16', weightKg: 12.4, allergies: '', healthNotes: '' }],
 			events: [{ id: 'meal-1', petId: 'milo', kind: 'meal', occurredAt: '2026-10-02T08:00:00.000Z', by: 'Я', amount: 80, unit: 'г' }],
-			schedules: [{ id: 'schedule-1', petId: 'milo', kind: 'meal', title: 'Утренний корм', time: '08:00', days: [0, 1, 2, 3, 4, 5, 6], enabled: true }]
+			schedules: [{ id: 'schedule-1', petId: 'milo', kind: 'meal', title: 'Утренний корм', time: '08:00', timezone: 'Europe/Moscow', days: [0, 1, 2, 3, 4, 5, 6], enabled: true }]
 		};
 		expect(isValidBackup(backup)).toBe(true);
+		expect(isValidBackup({ ...backup, schedules: [{ ...backup.schedules[0], timezone: 'Mars/Olympus' }] })).toBe(false);
 		expect(isValidBackup({ pets: [{}], events: [] })).toBe(false);
 		expect(isValidBackup({ ...backup, events: [{ ...backup.events[0], petId: 'unknown' }] })).toBe(false);
 		expect(isValidBackup({ ...backup, schedules: [{ ...backup.schedules[0], time: '25:00' }] })).toBe(false);

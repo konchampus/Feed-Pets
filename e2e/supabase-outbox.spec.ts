@@ -32,6 +32,7 @@ test('retries family writes and protects cloud schedule creation', async ({ brow
 		kind: 'meal',
 		title: 'Утреннее кормление',
 		local_time: '08:00:00',
+		timezone: 'Europe/Moscow',
 		weekdays: [0, 1, 2, 3, 4, 5, 6],
 		is_active: true
 	}];
@@ -151,7 +152,7 @@ test('retries family writes and protects cloud schedule creation', async ({ brow
 		if (url.pathname === '/rest/v1/care_schedules' && request.method() === 'POST') {
 			scheduleInsertAttempts++;
 			const payload = request.postDataJSON() as Record<string, unknown>;
-			const newSchedule = { ...payload, local_time: `${payload.local_time}:00`, created_by: testUser.id };
+			const newSchedule = { ...payload, is_active: true, local_time: `${payload.local_time}:00`, created_by: testUser.id };
 			scheduleRequestIds.push(String(newSchedule.id));
 			if (scheduleInsertAttempts === 1) {
 				await firstScheduleInsert;
@@ -198,6 +199,14 @@ test('retries family writes and protects cloud schedule creation', async ({ brow
 	});
 
 	await page.addInitScript(() => {
+		const createObjectURL = URL.createObjectURL.bind(URL);
+		URL.createObjectURL = ((blob: Blob) => {
+			if (blob.type === 'application/json') {
+				const exportWindow = window as Window & { lapkiBackupJson?: string };
+				void blob.text().then((text) => { exportWindow.lapkiBackupJson = text; });
+			}
+			return createObjectURL(blob);
+		}) as typeof URL.createObjectURL;
 		localStorage.setItem('sb-outbox-test-auth-token', JSON.stringify({
 			access_token: 'test-access-token',
 			refresh_token: 'test-refresh-token',
@@ -221,6 +230,9 @@ test('retries family writes and protects cloud schedule creation', async ({ brow
 		await page.goto(baseURL ?? 'http://127.0.0.1:4174/');
 		await expect(page.locator('.app-shell')).toHaveAttribute('data-ready', 'true');
 		await expect(page.getByRole('heading', { name: 'День Рада' })).toBeVisible();
+		await page.getByRole('button', { name: 'Расписание', exact: true }).click();
+		await expect(page.locator('.schedule-timezone')).toHaveText('Пояс: Europe/Moscow');
+		await page.getByRole('button', { name: 'Главная', exact: true }).click();
 		await page.getByRole('button', { name: 'Кормление', exact: true }).click();
 		const dialog = page.getByRole('dialog');
 		await dialog.locator('#care-amount').fill('80');
@@ -303,6 +315,7 @@ test('retries family writes and protects cloud schedule creation', async ({ brow
 		expect(scheduleRows.filter((row) => row.title === 'Вечерняя таблетка')).toHaveLength(1);
 		expect(scheduleRows.filter((row) => row.title === 'Вечернее лекарство')).toHaveLength(0);
 		expect(scheduleRows.find((row) => row.title === 'Вечерняя таблетка')?.local_time).toBe('21:10:00');
+		expect(scheduleRows.find((row) => row.title === 'Вечерняя таблетка')?.timezone).toBe(await page.evaluate(() => Intl.DateTimeFormat().resolvedOptions().timeZone));
 
 		await page.locator('#schedule-title').fill('После прогулки');
 		await addScheduleButton.click();
@@ -332,6 +345,11 @@ test('retries family writes and protects cloud schedule creation', async ({ brow
 		await expect(page.getByRole('status')).toHaveText('Не удалось удалить профиль');
 		expect(petDeleteAttempts).toBe(1);
 		await expect(page.getByRole('button', { name: 'Изменить профиль Рада', exact: true })).toBeVisible();
+		await page.getByRole('button', { name: 'Скачать резервную копию', exact: true }).click();
+		await expect(page.getByRole('status')).toHaveText('Полная резервная копия скачана');
+		const backupJson = await page.evaluate(() => (window as Window & { lapkiBackupJson?: string }).lapkiBackupJson ?? '');
+		const backup = JSON.parse(backupJson) as { schedules: Array<{ timezone?: string }> };
+		expect(backup.schedules).toContainEqual(expect.objectContaining({ timezone: 'Europe/Moscow' }));
 		expect(pageErrors).toEqual([]);
 	} finally {
 		await context.close();

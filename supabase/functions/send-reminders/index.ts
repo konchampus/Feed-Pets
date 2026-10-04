@@ -2,6 +2,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 import { createApiKeyFetch, getSecretKey } from '../_shared/api-keys.ts';
 import { fetchAllPages } from '../_shared/paginated-query.ts';
 import { makePushClient, sendFamilyPush } from '../_shared/push.ts';
+import { getDueReminders } from '../_shared/schedule-reminders.ts';
 
 type ReminderSchedule = {
 	id: string;
@@ -16,14 +17,6 @@ type ReminderSchedule = {
 	pets: { name?: string } | null;
 	created_by: string;
 };
-
-function getLocalTime(timezone: string) {
-	const now = new Date();
-	const parts = new Intl.DateTimeFormat('en-CA', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(now);
-	const value = (type: string) => parts.find((part) => part.type === type)?.value ?? '';
-	const weekday = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(value('weekday'));
-	return { date: `${value('year')}-${value('month')}-${value('day')}`, minute: `${value('hour')}:${value('minute')}`, weekday };
-}
 
 Deno.serve(async (request) => {
 	if (request.method !== 'POST') return Response.json({ error: 'Method not allowed' }, { status: 405 });
@@ -43,19 +36,12 @@ Deno.serve(async (request) => {
 	} catch {
 		return Response.json({ error: 'Could not load schedules' }, { status: 500 });
 	}
-	const due: typeof schedules = [];
-	for (const schedule of schedules ?? []) {
-		let local;
-		try { local = getLocalTime(schedule.timezone); } catch { continue; }
-		const scheduledTime = String(schedule.local_time).slice(0, 5);
-		if (schedule.weekdays.includes(local.weekday) && scheduledTime <= local.minute && schedule.last_notified_for !== local.date) due.push(schedule);
-	}
+	const due = getDueReminders(schedules ?? [], new Date());
 	if (!due.length) return Response.json({ sent: 0 });
 	try {
 		const push = makePushClient();
 		let sent = 0;
-		for (const schedule of due) {
-			const localDate = getLocalTime(schedule.timezone).date;
+		for (const { schedule, localDate } of due) {
 			const { data: claimed, error: claimError } = await admin.rpc('claim_care_schedule', { schedule_id: schedule.id, local_date: localDate });
 			if (claimError || typeof claimed !== 'string') continue;
 			const dogName = (schedule.pets as { name?: string } | null)?.name ?? 'собака';
