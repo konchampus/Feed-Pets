@@ -15,6 +15,10 @@
       <stop offset=".5" stop-color="#9c6844"/>
       <stop offset="1" stop-color="#5b3d2c"/>
     </linearGradient>
+    <linearGradient id="emblem" x1="144" x2="178" y1="146" y2="183" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#aeb99a"/>
+      <stop offset="1" stop-color="#758465"/>
+    </linearGradient>
     <radialGradient id="shine" cx="0" cy="0" r="1" gradientTransform="matrix(0 66 -104 0 125 135)" gradientUnits="userSpaceOnUse">
       <stop stop-color="#fff" stop-opacity=".54"/>
       <stop offset="1" stop-color="#fff" stop-opacity="0"/>
@@ -32,7 +36,17 @@
   <path d="M85 109c17-6 44-9 75-9" stroke="#d6ae7c" stroke-linecap="round" stroke-opacity=".42" stroke-width="2"/>
   <path d="M94 116c8-10 18-9 22-1 3 6-2 10-9 10-6 0-11-3-13-9Zm28-7c6-9 15-10 19-3 4 6 0 12-7 13-5 1-10-3-12-10Zm28 2c6-10 16-9 19-2 3 6-2 11-9 11-5 0-8-3-10-9Zm28-2c7-8 16-7 18 1 2 7-3 11-10 10-5 0-7-4-8-11Zm27 2c5-8 13-7 15 0 2 6-3 10-8 10-5 0-7-4-7-10Z" fill="#d5a471" stroke="#583d2e" stroke-opacity=".34" stroke-width="1.2"/>
   <path d="M79 130c13 9 37 15 64 17" stroke="#e8ebd8" stroke-linecap="round" stroke-opacity=".72" stroke-width="4"/>
+  <path d="M77 143c13 12 43 20 83 20s70-8 83-20" stroke="#586a48" stroke-linecap="round" stroke-opacity=".25" stroke-width="2"/>
+  <path d="M91 178c18 10 43 15 69 15s51-5 69-15" stroke="#6b7c58" stroke-linecap="round" stroke-opacity=".48" stroke-width="1.5"/>
+  <path d="M101 196c19 8 39 11 59 11s40-3 59-11" stroke="#e6e9d3" stroke-linecap="round" stroke-opacity=".33" stroke-width="2"/>
   <path d="M105 187c16 7 37 10 57 9" stroke="#e4e8d3" stroke-linecap="round" stroke-opacity=".4" stroke-width="2"/>
+  <ellipse cx="160" cy="163" fill="#536144" fill-opacity=".14" rx="21" ry="19"/>
+  <path d="M160 143c-9 0-16 6-16 15 0 8 7 15 16 15s16-7 16-15c0-9-7-15-16-15Z" fill="url(#emblem)" stroke="#e8ead8" stroke-opacity=".62" stroke-width="1.5"/>
+  <path d="M160 164c-4-5-10-3-10 2 0 5 10 11 10 11s10-6 10-11c0-5-6-7-10-2Z" fill="#f2f0e2" fill-opacity=".92"/>
+  <ellipse cx="153" cy="155" fill="#f2f0e2" fill-opacity=".94" rx="3.2" ry="4.2" transform="rotate(-25 153 155)"/>
+  <ellipse cx="160" cy="151" fill="#f2f0e2" fill-opacity=".94" rx="3.1" ry="4.3"/>
+  <ellipse cx="167" cy="155" fill="#f2f0e2" fill-opacity=".94" rx="3.2" ry="4.2" transform="rotate(25 167 155)"/>
+  <path d="M147 153c2-4 6-6 11-7m15 11c-1 7-5 12-10 15" stroke="#fffef4" stroke-linecap="round" stroke-opacity=".55" stroke-width="1.5"/>
   <circle cx="226" cy="157" r="2.5" fill="#e5e8d1" fill-opacity=".8"/>
   <circle cx="215" cy="176" r="1.5" fill="#e5e8d1" fill-opacity=".65"/>
 </svg>

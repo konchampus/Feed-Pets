@@ -38,7 +38,7 @@ main { width: min(1240px, calc(100% - 64px)); margin: 0 auto; }
 .overline { margin: 0 0 11px; color: #828a73; font-size: 10px; font-weight: 700; letter-spacing: .105em; }
 h1, h2, h3, p { margin-top: 0; }
 .welcome h1, .page-title h1 { margin: 0; font: 700 45px/1.02 var(--serif); letter-spacing: -.045em; color: #303a30; }
-.welcome h1 .welcome-heart { display: inline-block; width: 18px; height: 18px; margin: 0 0 4px 4px; vertical-align: top; }
+.welcome h1 .welcome-heart { display: inline-block; width: 28px; height: 28px; margin: 0 0 3px 5px; vertical-align: top; }
 .welcome-date { display: none; }
 .pet-switch { display: flex; align-items: center; gap: 12px; min-width: 205px; max-width: 246px; padding: 9px 13px 9px 9px; border: 1px solid #e7e4d8; border-radius: 50px; background: #fffdf7; }
 .pet-initial { display: grid; place-items: center; flex: 0 0 43px; width: 43px; height: 43px; border-radius: 50%; background: #e9e8d3; color: var(--rust); font: 700 20px var(--serif); }
@@ -122,7 +122,7 @@ h1, h2, h3, p { margin-top: 0; }
 .history-row > button { width: 32px; height: 32px; padding: 8px; border: 0; border-radius: 50%; background: transparent; color: #9c9586; }
 .history-row > button:hover { background: #f0e8df; color: var(--rust); }
 .empty-state { max-width: 430px; margin: 85px auto; text-align: center; }
-.empty-state .empty-art { display: block; width: 84px; height: 84px; margin: 0 auto; }
+.empty-state .empty-art { display: block; width: 132px; height: 132px; margin: 0 auto 6px; }
 .empty-mark { display: block; width: 76px; height: 76px; margin: 0 auto; color: var(--leaf); }
 .avatar-art { width: 30px; height: 30px; }
 .settings-dog-art { width: 38px; height: 38px; }
@@ -238,7 +238,7 @@ textarea { padding-top: 10px; resize: vertical; }
 	.welcome { grid-column: 1; grid-row: 1; min-height: 146px; padding: 24px 0 7px; align-items: center; }
 	.welcome .overline { display: none; }
 	.welcome h1 { font-size: 33px; line-height: .99; }
-	.welcome h1 .welcome-heart { width: 14px; height: 14px; }
+	.welcome h1 .welcome-heart { width: 23px; height: 23px; }
 	.welcome-date { display: block; margin: 8px 0 0; text-transform: capitalize; color: var(--muted); font-size: 10px; }
 	.pet-switch { max-width: 172px; padding: 6px 10px 6px 6px; gap: 8px; }
 	.pet-initial { flex-basis: 37px; width: 37px; height: 37px; }
@@ -296,6 +296,7 @@ textarea { padding-top: 10px; resize: vertical; }
 	.history-copy p { font-size: 10px; }
 	.history-row time b { font-size: 10px; }
 	.history-row time span { font-size: 9px; }
+	.empty-state .empty-art { width: 116px; height: 116px; }
 	.history-row > button { width: 24px; }
 	.sheet-backdrop { padding: 10px; }
 	.care-sheet { padding: 21px 20px max(21px, env(safe-area-inset-bottom)); }

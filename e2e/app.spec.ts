@@ -126,7 +126,8 @@ test('starts without a sample dog and lets the family add its own profile', asyn
 	await page.reload();
 	await expect(page.locator('.app-shell')).toHaveAttribute('data-ready', 'true');
 	await expect(page.getByRole('heading', { name: 'Добавьте профиль собаки' })).toBeVisible();
-	await expect.poll(() => page.locator('.empty-art').evaluate((image) => (image as HTMLImageElement).naturalWidth)).toBe(320);
+	await expect.poll(() => page.locator('.empty-art').evaluate((image) => (image as HTMLImageElement).naturalWidth)).toBe(360);
+	await expect.poll(() => page.locator('.empty-art').evaluate((image) => image.getBoundingClientRect().width)).toBe(132);
 	await expect(page.getByText('Мило', { exact: true })).toHaveCount(0);
 
 	await page.getByRole('button', { name: 'Добавить собаку', exact: true }).click();
@@ -150,6 +151,7 @@ test('starts without a sample dog and lets the family add its own profile', asyn
 	await page.reload();
 	await expect(page.locator('.app-shell')).toHaveAttribute('data-ready', 'true');
 	await expect(page.getByRole('heading', { name: 'День Рада дома' })).toBeVisible();
+	await expect.poll(() => page.locator('.welcome-heart').evaluate((image) => (image as HTMLImageElement).naturalWidth)).toBe(96);
 });
 
 test('clears the previous success message when opening family setup', async ({ page }) => {
@@ -176,6 +178,7 @@ test('first dog setup works on a narrow screen', async ({ page }) => {
 	await page.evaluate(() => localStorage.clear());
 	await page.reload();
 	await expect(page.getByRole('heading', { name: 'Добавьте профиль собаки' })).toBeVisible();
+	await expect.poll(() => page.locator('.empty-art').evaluate((image) => image.getBoundingClientRect().width)).toBe(116);
 	await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 	await page.getByRole('button', { name: 'Добавить собаку', exact: true }).click();
 	await page.locator('#pet-name').fill('Рада');
