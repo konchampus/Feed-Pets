@@ -312,6 +312,7 @@ test('navigates history and adds, toggles, and deletes a schedule', async ({ pag
 	await page.locator('#schedule-kind').selectOption({ label: 'Лекарство' });
 	await page.locator('#schedule-time').fill('20:30');
 	await page.getByRole('button', { name: 'Добавить', exact: true }).click();
+	await expect(page.getByText(/расписание сохранено только здесь и не отправляет уведомления/i)).toBeVisible();
 	const scheduleSwitch = page.getByRole('switch', { name: 'Выключить: Вечернее лекарство' });
 	await expect(scheduleSwitch).toHaveAttribute('aria-checked', 'true');
 	await scheduleSwitch.click();
@@ -320,6 +321,28 @@ test('navigates history and adds, toggles, and deletes a schedule', async ({ pag
 	await page.getByRole('button', { name: 'Удалить напоминание: Вечернее лекарство' }).click();
 	await expect(page.getByRole('status')).toHaveText('Напоминание удалено');
 	await expect(page.getByText('Добавьте повторяющееся напоминание для кормления, лекарств или визита.')).toBeVisible();
+});
+
+test('shows the nearest future reminder on the home screen', async ({ page }) => {
+	await page.clock.install({ time: new Date(2026, 9, 4, 12, 0) });
+	await page.reload();
+	await expect(page.locator('.app-shell')).toHaveAttribute('data-ready', 'true');
+	await page.getByRole('button', { name: 'Расписание', exact: true }).click();
+
+	await page.locator('#schedule-title').fill('Утренний корм');
+	await page.locator('#schedule-time').fill('08:00');
+	await page.getByRole('button', { name: 'Добавить', exact: true }).click();
+	await expect(page.getByRole('status')).toHaveText('Напоминание добавлено');
+
+	await page.locator('#schedule-title').fill('Вечерняя прогулка');
+	await page.locator('#schedule-time').fill('19:00');
+	await page.getByRole('button', { name: 'Добавить', exact: true }).click();
+	await expect(page.getByRole('status')).toHaveText('Напоминание добавлено');
+
+	await page.getByRole('button', { name: 'Главная', exact: true }).click();
+	const reminderCard = page.locator('.reminder-card');
+	await expect(reminderCard.locator('strong')).toHaveText('Вечерняя прогулка');
+	await expect(reminderCard.locator('small')).toHaveText('Сегодня · 19:00');
 });
 
 test('exports a backup, restores it, and rejects invalid backup data', async ({ page }, testInfo) => {

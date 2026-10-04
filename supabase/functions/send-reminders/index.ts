@@ -1,6 +1,21 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { createApiKeyFetch, getSecretKey } from '../_shared/api-keys.ts';
+import { fetchAllPages } from '../_shared/paginated-query.ts';
 import { makePushClient, sendFamilyPush } from '../_shared/push.ts';
+
+type ReminderSchedule = {
+	id: string;
+	family_id: string;
+	pet_id: string;
+	kind: string;
+	title: string;
+	local_time: string;
+	timezone: string;
+	weekdays: number[];
+	last_notified_for: string | null;
+	pets: { name?: string } | null;
+	created_by: string;
+};
 
 function getLocalTime(timezone: string) {
 	const now = new Date();
@@ -16,8 +31,17 @@ Deno.serve(async (request) => {
 	if (!cronSecret || request.headers.get('Authorization') !== `Bearer ${cronSecret}`) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 	const secretKey = getSecretKey();
 	const admin = createClient(Deno.env.get('SUPABASE_URL')!, secretKey, { global: { fetch: createApiKeyFetch(secretKey) }, auth: { persistSession: false } });
-	const { data: schedules, error } = await admin.from('care_schedules').select('id,family_id,pet_id,kind,title,local_time,timezone,weekdays,last_notified_for,pets(name),created_by').eq('is_active', true);
-	if (error) return Response.json({ error: 'Could not load schedules' }, { status: 500 });
+	let schedules: ReminderSchedule[];
+	try {
+		schedules = await fetchAllPages<ReminderSchedule>((afterId, pageSize) => {
+			let query = admin.from('care_schedules').select('id,family_id,pet_id,kind,title,local_time,timezone,weekdays,last_notified_for,pets(name),created_by')
+				.eq('is_active', true).order('id', { ascending: true });
+			if (afterId) query = query.gt('id', afterId);
+			return query.limit(pageSize);
+		});
+	} catch {
+		return Response.json({ error: 'Could not load schedules' }, { status: 500 });
+	}
 	const due: typeof schedules = [];
 	for (const schedule of schedules ?? []) {
 		let local;

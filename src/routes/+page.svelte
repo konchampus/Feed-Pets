@@ -6,6 +6,8 @@
 	import { careIcons, careLabels, type CareEvent, type CareKind, type CareSchedule, type Pet } from '$lib/types';
 	import { supabaseClient } from '$lib/supabase';
 	import { fetchAllPages } from '$lib/paginated-query';
+	import { findNextSchedule } from '$lib/schedule';
+	import { removePushSubscription } from '$lib/push-subscription';
 	import { PUBLIC_VAPID_KEY } from '$env/static/public';
 	import type { RealtimeChannel } from '@supabase/supabase-js';
 
@@ -13,6 +15,7 @@
 	type FamilyContext = { userId: string; familyId: string; sessionVersion: number };
 	let tab = $state<Tab>('home');
 	let appReady = $state(false);
+	let currentTime = $state(new Date());
 	let pets = $state<Pet[]>([]);
 	let events = $state<CareEvent[]>([]);
 	let schedules = $state<CareSchedule[]>([]);
@@ -82,6 +85,7 @@
 	let legacyCareCount = $derived(events.filter((event) => event.petId === legacyStarterPetId).length);
 	let legacyScheduleCount = $derived(schedules.filter((schedule) => schedule.petId === legacyStarterPetId).length);
 	let sortedEvents = $derived([...events].filter((event) => event.petId === (activePet?.id ?? legacyStarterPetId)).sort((a, b) => b.occurredAt.localeCompare(a.occurredAt)));
+	let nextSchedule = $derived(findNextSchedule(schedules, activePet?.id ?? '', currentTime));
 	let weekCount = $derived(events.filter((event) => event.petId === activePet?.id && Date.now() - new Date(event.occurredAt).getTime() < 7 * 86400000).length);
 	let dateText = $derived(new Intl.DateTimeFormat('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date()));
 
@@ -96,7 +100,11 @@
 		const retryFamilySync = () => {
 			if (supabase && currentUserId) void loadFamily(currentUserId);
 		};
+		const updateCurrentTime = () => currentTime = new Date();
+		const scheduleClock = window.setInterval(updateCurrentTime, 60_000);
 		window.addEventListener('online', retryFamilySync);
+		window.addEventListener('focus', updateCurrentTime);
+		document.addEventListener('visibilitychange', updateCurrentTime);
 		member = localStorage.getItem('lapki:member') ?? 'Я';
 		reducedMotion = localStorage.getItem('lapki:reduced-motion') === 'true';
 		soundEnabled = localStorage.getItem('lapki:sound') === 'true';
@@ -172,6 +180,9 @@
 		if (query.get('invite')) { navigateToTab('settings'); settingsPanel = 'auth'; authMessage = 'Войдите или создайте аккаунт, чтобы принять приглашение.'; }
 		return () => {
 			window.removeEventListener('online', retryFamilySync);
+			window.removeEventListener('focus', updateCurrentTime);
+			document.removeEventListener('visibilitychange', updateCurrentTime);
+			clearInterval(scheduleClock);
 			if (familyChannel && supabase) void supabase.removeChannel(familyChannel);
 			authListener?.unsubscribe();
 			clearTimeout(toastTimer);
@@ -640,6 +651,15 @@
 		if (!birthday) return 'новый друг'; const years = Math.floor((Date.now() - new Date(birthday).getTime()) / 31557600000); return years < 1 ? 'меньше года' : `${years} ${years === 1 ? 'год' : years < 5 ? 'года' : 'лет'}`;
 	}
 	function timeOf(iso: string) { return new Intl.DateTimeFormat('ru-RU', { hour: '2-digit', minute: '2-digit' }).format(new Date(iso)); }
+	function nextScheduleTime() {
+		if (!nextSchedule) return 'Добавьте расписание ухода';
+		const nextAt = nextSchedule.nextAt;
+		let dateLabel: string;
+		if (nextAt.toDateString() === currentTime.toDateString()) dateLabel = 'Сегодня';
+		else if (nextAt.toDateString() === new Date(currentTime.getFullYear(), currentTime.getMonth(), currentTime.getDate() + 1).toDateString()) dateLabel = 'Завтра';
+		else dateLabel = new Intl.DateTimeFormat('ru-RU', { weekday: 'short', day: 'numeric', month: 'short' }).format(nextAt);
+		return `${dateLabel} · ${timeOf(nextAt.toISOString())}`;
+	}
 	function dayOf(iso: string) { return new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'short' }).format(new Date(iso)); }
 	function playSound() {
 		if (!soundEnabled) return;
@@ -667,13 +687,16 @@
 			const registration = await navigator.serviceWorker.ready;
 			const subscription = await registration.pushManager.getSubscription();
 			if (!subscription) { pushEnabled = false; return; }
-			if (supabase) {
-				const { error } = await supabase.from('push_subscriptions').delete().eq('endpoint', subscription.endpoint);
-				if (error) { notify('Не удалось отключить подписку на сервере'); return; }
+			const result = await removePushSubscription(subscription, async (endpoint) => {
+				if (!supabase) return true;
+				const { error } = await supabase.from('push_subscriptions').delete().eq('endpoint', endpoint);
+				return !error;
+			}, () => pushEnabled = false);
+			if (!result.deviceRemoved) {
+				notify(result.serverRemoved ? 'Подписка отключена на сервере, но устройство не удалось отключить' : 'Не удалось отключить push на устройстве и сервере');
+				return;
 			}
-			const removed = await subscription.unsubscribe();
-			if (!removed) { notify('Не удалось отключить уведомления на устройстве'); return; }
-			pushEnabled = false; notify('Уведомления отключены на этом устройстве');
+			notify(result.serverRemoved ? 'Уведомления отключены на этом устройстве' : 'Устройство отключено, но серверную запись удалить не удалось');
 		} catch { notify('Не удалось отключить уведомления на устройстве'); }
 	}
 	async function authenticate() {
@@ -983,7 +1006,7 @@
 			<aside class="side-column">
 				<div class="care-note"><span class="note-star">✳</span><p class="overline">ОДНА НЕДЕЛЯ РЯДОМ</p><strong>{weekCount}<span> дел заботы</span></strong><p>Каждая отметка помогает всей семье быть на одной волне.</p></div>
 				<div class="family-card"><div class="family-header">{#if familyId}<div class="family-dots"><b>{member.slice(0,1).toUpperCase()}</b>{#if familyRole === 'owner'}<b>+</b>{/if}</div>{:else}<span class="overline">НА ЭТОМ УСТРОЙСТВЕ</span>{/if}{#if familyRole === 'owner'}<button aria-label="Добавить участника" onclick={() => { navigateToTab('settings'); settingsPanel = 'profile'; }}>＋</button>{/if}</div><h3>{familyId ? 'Свои рядом' : 'Дневник ухода'}</h3><p>{familyId ? `Общий профиль${familyName ? ` · ${familyName}` : ''}` : cloudUser ? 'Создайте семейный профиль для синхронизации.' : 'Записи пока сохранены только в этом браузере.'}</p><button class="invite-link" onclick={() => { navigateToTab('settings'); settingsPanel = cloudUser ? 'profile' : 'auth'; }}>{familyRole === 'owner' ? 'Пригласить участника ↗' : familyId ? 'Настроить профиль семьи ↗' : cloudUser ? 'Создать семейный профиль ↗' : 'Подключить семью ↗'}</button></div>
-				<div class="reminder-card"><div class="reminder-mark">◷</div><div><span>СЛЕДУЮЩЕЕ</span><strong>{schedules.find((item) => item.enabled && item.petId === activePet?.id)?.title ?? 'Пока без напоминаний'}</strong><small>{schedules.find((item) => item.enabled && item.petId === activePet?.id)?.time ?? 'Добавьте расписание ухода'}</small></div><button aria-label="Открыть расписание" onclick={() => navigateToTab('schedule')}>↗</button></div>
+				<div class="reminder-card"><div class="reminder-mark">◷</div><div><span>СЛЕДУЮЩЕЕ</span><strong>{nextSchedule?.schedule.title ?? 'Пока без напоминаний'}</strong><small>{nextScheduleTime()}</small></div><button aria-label="Открыть расписание" onclick={() => navigateToTab('schedule')}>↗</button></div>
 			</aside>
 			{/if}
 		{:else if tab === 'history'}
@@ -1006,7 +1029,7 @@
 							</article>
 						{/each}
 					</div>
-				{:else}<div class="empty-line wide"><span>◷</span><p>Добавьте повторяющееся напоминание для кормления, лекарств или визита.</p></div>{/if}<p class="timezone-note">Время указано по часовому поясу этого устройства. Для push-напоминаний нужно подключить Supabase и VAPID.</p>
+				{:else}<div class="empty-line wide"><span>◷</span><p>Добавьте повторяющееся напоминание для кормления, лекарств или визита.</p></div>{/if}<p class="timezone-note">Время указано по часовому поясу этого устройства. {!familyId ? 'Расписание сохранено только здесь и не отправляет уведомления.' : 'Для доставки push нужны подписка на устройстве и настроенные VAPID и Cron в Supabase.'}</p>
 				{:else}<div class="empty-state"><span>◷</span><h2>Сначала добавьте собаку</h2><p>{legacyScheduleCount ? `Сохранено напоминаний: ${legacyScheduleCount}. Они останутся и привяжутся к собаке после добавления профиля.` : 'Расписание ухода будет привязано к профилю собаки.'}</p>{#if familyRole !== 'member'}<button class="primary-button" onclick={openPetSetup}>Добавить собаку</button>{/if}</div>{/if}
 			</section>
 		{:else}
