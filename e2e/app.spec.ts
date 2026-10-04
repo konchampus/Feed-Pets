@@ -410,6 +410,7 @@ test('opens settings with local mode and privacy status', async ({ page }) => {
 	await page.getByRole('button', { name: 'Настройки', exact: true }).click();
 	await expect(page.getByRole('heading', { name: 'Настройки' })).toBeVisible();
 	await expect(page.getByText(/на этом устройстве/i)).toBeVisible();
+	await expect(page.getByText(/для push подключите supabase и задайте публичный vapid key/i)).toBeVisible();
 	const sceneToggle = page.getByRole('checkbox', { name: '3D-миска' });
 	await expect(sceneToggle).toBeChecked();
 	await sceneToggle.uncheck();

@@ -75,7 +75,7 @@
 	let authListener: { unsubscribe: () => void } | null = null;
 	const kindOptions: CareKind[] = ['meal', 'walk', 'water', 'medicine', 'weight', 'vet', 'vaccine'];
 	const supabase = supabaseClient();
-	let isConfigured = $state(Boolean(supabase && PUBLIC_VAPID_KEY));
+	let pushConfigured = $state(Boolean(supabase && PUBLIC_VAPID_KEY));
 	let activePet = $derived(pets[Math.min(petIndex, pets.length - 1)]);
 	let meals = $derived(todayMeals(events, activePet?.id ?? ''));
 	let grams = $derived(meals.reduce((sum, event) => sum + (event.amount ?? 0), 0));
@@ -647,7 +647,8 @@
 	}
 	async function enablePush() {
 		if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) { notify('Push недоступен в этом браузере'); return; }
-		if (!supabase || !isConfigured) { notify('Подключите Supabase и VAPID key в настройках проекта'); return; }
+		if (!supabase) { notify('Для Push сначала подключите семейное пространство Supabase'); return; }
+		if (!pushConfigured) { notify('Для Push добавьте публичный VAPID key в GitHub Actions и пересоберите сайт'); return; }
 		if (!cloudUser || !familyId) { notify('Сначала войдите в семейный профиль'); return; }
 		const key = PUBLIC_VAPID_KEY;
 		if (!key) { notify('Добавьте публичный VAPID key в настройки Pages'); return; }
@@ -1072,7 +1073,7 @@
 								{/if}
 							{/if}
 						</section>
-						<section class="settings-block"><div class="settings-heading"><div><h2>Ваши напоминания</h2><p>{pushEnabled ? 'Уведомления включены на этом устройстве.' : 'Нужны для событий семьи и расписания.'}</p></div><span>♧</span></div>{#if isConfigured}{#if familyId}<button class="secondary-button" onclick={() => pushEnabled ? void disablePush() : void enablePush()}>{pushEnabled ? 'Отключить уведомления' : 'Включить уведомления'}</button>{:else}<button class="secondary-button" onclick={() => { navigateToTab('settings'); settingsPanel = cloudUser ? 'profile' : 'auth'; }}>{cloudUser ? 'Создать семейный профиль' : 'Войти в семейный профиль'}</button>{/if}{:else}<p class="fine-print">Push пока не настроен. Нужны проект Supabase и ключ VAPID; шаги есть в README репозитория.</p>{/if}<p class="fine-print">На iPhone откройте сайт в Safari, добавьте его на экран «Домой» и включите уведомления внутри установленного PWA.</p></section>
+						<section class="settings-block"><div class="settings-heading"><div><h2>Ваши напоминания</h2><p>{pushEnabled ? 'Уведомления включены на этом устройстве.' : 'Нужны для событий семьи и расписания.'}</p></div><span>♧</span></div>{#if pushConfigured}{#if familyId}<button class="secondary-button" onclick={() => pushEnabled ? void disablePush() : void enablePush()}>{pushEnabled ? 'Отключить уведомления' : 'Включить уведомления'}</button>{:else}<button class="secondary-button" onclick={() => { navigateToTab('settings'); settingsPanel = cloudUser ? 'profile' : 'auth'; }}>{cloudUser ? 'Создать семейный профиль' : 'Войти в семейный профиль'}</button>{/if}{:else}<p class="fine-print">{supabase ? 'Supabase уже подключён. Для Push нужен публичный VAPID key в GitHub Actions; шаги и серверные ключи описаны в README.' : 'Для Push подключите Supabase и задайте публичный VAPID key в GitHub Actions. Шаги есть в README репозитория.'}</p>{/if}<p class="fine-print">На iPhone откройте сайт в Safari, добавьте его на экран «Домой» и включите уведомления внутри установленного PWA.</p></section>
 					</div><aside class="settings-side"><section class="settings-block"><div class="settings-heading"><div><h2>Внешний вид</h2><p>Легко для глаз и устройства</p></div><span>◐</span></div><label class="setting-toggle"><span>3D-миска</span><input type="checkbox" bind:checked={scene} onchange={() => localStorage.setItem('lapki:scene', String(scene))} /><i></i></label><label class="setting-toggle"><span>Звук отметки</span><input type="checkbox" bind:checked={soundEnabled} onchange={() => localStorage.setItem('lapki:sound', String(soundEnabled))} /><i></i></label><label class="setting-toggle"><span>Уменьшить анимацию</span><input type="checkbox" bind:checked={reducedMotion} onchange={() => localStorage.setItem('lapki:reduced-motion', String(reducedMotion))} /><i></i></label></section><section class="settings-block"><div class="settings-heading"><div><h2>Копия данных</h2><p>Храните свои записи в безопасности</p></div><span>↧</span></div><button class="secondary-button" disabled={exportingBackup} onclick={exportData}>{exportingBackup ? 'Готовим копию…' : 'Скачать резервную копию'}</button><button class="quiet-button" disabled={Boolean(cloudUser)} onclick={importData}>Восстановить из файла</button><input bind:this={fileInput} class="sr-only" type="file" accept="application/json" onchange={readBackup} /><p class="fine-print">{cloudUser ? 'Для восстановления выйдите в локальный режим.' : 'На бесплатном тарифе Supabase нет автоматических резервных копий.'}</p></section><section class="settings-block info-block"><p class="overline">ПРИВАТНОСТЬ</p><p>Локальные данные остаются в этом браузере. Общий доступ появляется после подключения Supabase; записи защищены политиками доступа семьи.</p><a href="https://supabase.com/docs/guides/platform/free" target="_blank" rel="noreferrer">О бесплатном тарифе Supabase ↗</a></section></aside></div>
 			</section>
 		{/if}
