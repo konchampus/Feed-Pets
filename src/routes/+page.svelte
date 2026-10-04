@@ -713,6 +713,13 @@
 	}
 	async function removePet(petId: string) {
 		if (blockFamilyChanges()) return;
+		const pet = pets.find((item) => item.id === petId);
+		if (!pet) return;
+		if (pets.length === 1 && familyId) {
+			notify('Последнюю собаку из семейного профиля удалить нельзя');
+			return;
+		}
+		if (!window.confirm(`Удалить профиль ${pet.name} вместе с историей ухода и напоминаниями? Это действие нельзя отменить.`)) return;
 		const context = getFamilyContext();
 		if (supabase && familyId) {
 			if (familyRole !== 'owner') { notify('Профили собак меняет владелец семьи'); return; }
@@ -720,7 +727,15 @@
 			if (error || !data) { notify('Не удалось удалить профиль'); return; }
 		}
 		if (!isCurrentFamilyContext(context)) return;
+		const removedEventIds = [...new Set([
+			...events.filter((event) => event.petId === petId),
+			...getPendingEvents().filter((event) => event.petId === petId)
+		].map((event) => event.id))];
 		pets = pets.filter((pet) => pet.id !== petId); events = events.filter((event) => event.petId !== petId); schedules = schedules.filter((item) => item.petId !== petId);
+		for (const eventId of removedEventIds) {
+			removePendingEvent(eventId);
+			removePendingPushEvent(eventId);
+		}
 		savePets(pets); saveEvents(events); saveSchedules(schedules); petIndex = 0; notify('Профиль удалён');
 	}
 	async function addSchedule() {
@@ -1211,9 +1226,9 @@
 								<div class="pet-settings-row">
 									<div class="pet-initial">{pet.name.slice(0,1)}</div>
 									<div><strong>{pet.name}</strong><span>{pet.breed} · {pet.weightKg ? `${pet.weightKg} кг` : 'вес не указан'}</span></div>
-									{#if !cloudUser || familyRole === 'owner'}
+									{#if !familyId || familyRole === 'owner'}
 										<button aria-label={`Изменить профиль ${pet.name}`} onclick={() => openPetEdit(pet)}><AppIcon kind="edit" /></button>
-										{#if pets.length > 1}<button aria-label={`Удалить профиль ${pet.name}`} onclick={() => void removePet(pet.id)}><AppIcon kind="trash" /></button>{/if}
+										{#if pets.length > 1 || !familyId}<button aria-label={`Удалить профиль ${pet.name}`} onclick={() => void removePet(pet.id)}><AppIcon kind="trash" /></button>{/if}
 									{/if}
 								</div>
 							{/each}

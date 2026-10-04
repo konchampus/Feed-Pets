@@ -154,6 +154,53 @@ test('starts without a sample dog and lets the family add its own profile', asyn
 	await expect.poll(() => page.locator('.welcome-heart').evaluate((image) => (image as HTMLImageElement).naturalWidth)).toBe(96);
 });
 
+test('confirms deleting the last local dog and returns to the empty state', async ({ page }) => {
+	await page.evaluate(() => {
+		localStorage.setItem('lapki:events', JSON.stringify([{
+			id: 'e2e-meal', petId: 'e2e-dog', kind: 'meal', occurredAt: '2026-10-05T08:00:00.000Z', by: 'Я', amount: 80, unit: 'г'
+		}]));
+		localStorage.setItem('lapki:schedules', JSON.stringify([{
+			id: 'e2e-schedule', petId: 'e2e-dog', kind: 'meal', title: 'Утренний корм', time: '08:00',
+			days: [0, 1, 2, 3, 4, 5, 6], enabled: true
+		}]));
+		localStorage.setItem('lapki:pendingEvents', JSON.stringify([{
+			id: 'e2e-meal', petId: 'e2e-dog', kind: 'meal', occurredAt: '2026-10-05T08:00:00.000Z', by: 'Я', amount: 80, unit: 'г'
+		}, {
+			id: 'orphaned-meal', petId: 'e2e-dog', kind: 'walk', occurredAt: '2026-10-05T08:30:00.000Z', by: 'Я', amount: 15, unit: 'мин'
+		}, {
+			id: 'other-meal', petId: 'other-dog', kind: 'meal', occurredAt: '2026-10-05T09:00:00.000Z', by: 'Я', amount: 20, unit: 'г'
+		}]));
+		localStorage.setItem('lapki:pendingPushEvents', JSON.stringify([
+			{ eventId: 'e2e-meal', authorId: 'e2e-user' },
+			{ eventId: 'orphaned-meal', authorId: 'e2e-user' },
+			{ eventId: 'other-meal', authorId: 'e2e-user' }
+		]));
+	});
+	await page.reload();
+	await expect(page.locator('.app-shell')).toHaveAttribute('data-ready', 'true');
+	await page.getByRole('button', { name: 'Настройки', exact: true }).click();
+	const deleteButton = page.getByRole('button', { name: 'Удалить профиль Рада', exact: true });
+	await expect(deleteButton).toBeVisible();
+	page.once('dialog', (dialog) => void dialog.dismiss());
+	await deleteButton.click();
+	await expect(page.getByText('Рада', { exact: true })).toBeVisible();
+	await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('lapki:pets') ?? '[]'))).toHaveLength(1);
+
+	page.once('dialog', (dialog) => void dialog.accept());
+	await deleteButton.click();
+	await expect(page.getByRole('status')).toHaveText('Профиль удалён');
+	await page.getByRole('button', { name: 'Главная', exact: true }).click();
+	await expect(page.getByRole('heading', { name: 'Добавьте профиль собаки' })).toBeVisible();
+	const remainingData = await page.evaluate(() => Object.fromEntries(
+		['pets', 'events', 'schedules', 'pendingEvents', 'pendingPushEvents'].map((key) => [key, JSON.parse(localStorage.getItem(`lapki:${key}`) ?? '[]')])
+	));
+	expect(remainingData).toEqual({
+		pets: [], events: [], schedules: [],
+		pendingEvents: [{ id: 'other-meal', petId: 'other-dog', kind: 'meal', occurredAt: '2026-10-05T09:00:00.000Z', by: 'Я', amount: 20, unit: 'г' }],
+		pendingPushEvents: [{ eventId: 'other-meal', authorId: 'e2e-user' }]
+	});
+});
+
 test('clears the previous success message when opening family setup', async ({ page }) => {
 	await page.evaluate(() => localStorage.clear());
 	await page.reload();

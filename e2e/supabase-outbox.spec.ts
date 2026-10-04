@@ -367,6 +367,7 @@ test('retries family writes and protects cloud schedule creation', async ({ brow
 		expect(scheduleDeleteAttempts).toBe(1);
 		await expect(page.getByText('Утреннее кормление', { exact: true })).toBeVisible();
 		await page.getByRole('button', { name: 'Настройки', exact: true }).click();
+		page.once('dialog', (dialog) => void dialog.accept());
 		await page.getByRole('button', { name: 'Удалить профиль Рада', exact: true }).click();
 		await expect(page.locator('.toast')).toHaveText('Не удалось удалить профиль');
 		expect(petDeleteAttempts).toBe(1);
