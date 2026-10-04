@@ -26,10 +26,6 @@ begin
     raise exception 'pg_net is installed in unexpected schema "%"; refusing to move it', extension_schema;
   end if;
 
-  if to_regclass('cron.job') is not null then
-    execute 'lock table cron.job in share row exclusive mode';
-  end if;
-
   if to_regclass('net.http_request_queue') is not null then
     execute 'lock table net.http_request_queue in access exclusive mode';
   end if;
