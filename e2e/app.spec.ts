@@ -108,6 +108,19 @@ test('records care with a clear confirmation and shows it in history', async ({ 
 	await expect(page.getByText('Прогулка · 35 мин', { exact: true })).toBeVisible();
 });
 
+test('uses vector icons throughout care, navigation, schedule and settings', async ({ page }) => {
+	await expect(page.locator('.care-icon > svg.app-icon')).toHaveCount(7);
+	await expect(page.locator('.bottom-nav > button > svg.app-icon')).toHaveCount(4);
+	await page.getByRole('button', { name: 'История', exact: true }).click();
+	await expect(page.locator('.empty-mark.app-icon')).toBeVisible();
+	await page.getByRole('button', { name: 'Расписание', exact: true }).click();
+	await expect(page.locator('.empty-line > svg.app-icon')).toBeVisible();
+	await page.getByRole('button', { name: 'Настройки', exact: true }).click();
+	await expect(page.getByRole('heading', { name: 'Настройки' })).toBeVisible();
+	await expect(page.locator('.settings-heading > svg.app-icon')).toHaveCount(4);
+	expect(await page.locator('svg.app-icon').evaluateAll((icons) => icons.every((icon) => icon.getAttribute('aria-hidden') === 'true'))).toBe(true);
+});
+
 test('starts without a sample dog and lets the family add its own profile', async ({ page }) => {
 	await page.evaluate(() => localStorage.clear());
 	await page.reload();

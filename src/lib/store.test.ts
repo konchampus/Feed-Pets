@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { addEvent, clearDataScope, flushPendingEvents, getEvents, getPendingEvents, getPendingPushEvents, getPets, isValidBackup, isValidCareAmount, legacyStarterPetId, mergePendingEvents, parseOptionalAmount, removePendingEvent, removePendingPushEvent, saveEvents, savePendingEvent, savePendingPushEvent, savePets, setDataScope, todayMeals } from './store';
+import { addEvent, clearDataScope, flushPendingEvents, getCachedFamilyId, getEvents, getPendingEvents, getPendingPushEvents, getPets, isValidBackup, isValidCareAmount, legacyStarterPetId, mergePendingEvents, parseOptionalAmount, removePendingEvent, removePendingPushEvent, saveCachedFamilyId, saveEvents, savePendingEvent, savePendingPushEvent, savePets, setDataScope, todayMeals } from './store';
 import type { CareEvent, Pet } from './types';
 
 afterEach(() => { localStorage.clear(); setDataScope('local'); vi.useRealTimers(); vi.unstubAllGlobals(); });
@@ -77,6 +77,16 @@ describe('care journal storage', () => {
 		setDataScope('family-b'); expect(getEvents()).toEqual([]);
 		setDataScope('local'); expect(getEvents()).toEqual([]);
 		setDataScope('family-a'); expect(getEvents()[0].id).toBe('a');
+	});
+
+	it('remembers only valid family IDs under their signed-in user', () => {
+		const userId = '123e4567-e89b-42d3-a456-426614174000';
+		const familyId = '123e4567-e89b-42d3-a456-426614174001';
+		saveCachedFamilyId(userId, familyId);
+		expect(getCachedFamilyId(userId)).toBe(familyId);
+		expect(getCachedFamilyId('other-user')).toBe('');
+		saveCachedFamilyId(userId, 'bad-id');
+		expect(getCachedFamilyId(userId)).toBe('');
 	});
 
 	it('removes only the revoked family cache', () => {

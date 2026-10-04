@@ -6,6 +6,23 @@ let dataScope = 'local';
 
 export function setDataScope(scope: string) { dataScope = scope; }
 
+export function getCachedFamilyId(userId: string): string {
+	if (typeof localStorage === 'undefined' || !isUuid(userId)) return '';
+	const familyId = localStorage.getItem(`lapki:user:${userId}:familyId`) ?? '';
+	return isUuid(familyId) ? familyId : '';
+}
+
+export function saveCachedFamilyId(userId: string, familyId: string | null) {
+	if (typeof localStorage === 'undefined' || !isUuid(userId)) return;
+	const key = `lapki:user:${userId}:familyId`;
+	if (familyId && isUuid(familyId)) localStorage.setItem(key, familyId);
+	else localStorage.removeItem(key);
+}
+
+function isUuid(value: string) {
+	return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
 export function clearDataScope(scope: string) {
 	if (typeof localStorage === 'undefined') return;
 	for (const key of ['pets', 'events', 'schedules', 'pendingEvents', 'pendingPushEvents']) {

@@ -39,7 +39,3 @@ export const careLabels: Record<CareKind, string> = {
 	meal: 'Кормление', walk: 'Прогулка', water: 'Вода', medicine: 'Лекарство',
 	weight: 'Вес', vet: 'Ветеринар', vaccine: 'Прививка'
 };
-
-export const careIcons: Record<CareKind, string> = {
-	meal: '◒', walk: '⌁', water: '◡', medicine: '✳', weight: '↗', vet: '+', vaccine: '✦'
-};

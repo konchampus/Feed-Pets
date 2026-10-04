@@ -15,6 +15,10 @@ test('retries family writes and protects cloud schedule creation', async ({ brow
 	const context = await browser.newContext();
 	const page = await context.newPage();
 	let serverEvents: Record<string, unknown>[] = [];
+	let offlineMode = false;
+	let offlineRequestCount = 0;
+	let refreshAttempts = 0;
+	let membershipReads = 0;
 	let insertAttempts = 0;
 	let pushAttempts = 0;
 	let petUpdateAttempts = 0;
@@ -56,9 +60,20 @@ test('retries family writes and protects cloud schedule creation', async ({ brow
 			contentType: 'application/json',
 			body: JSON.stringify(body)
 		});
-
 		if (request.method() === 'OPTIONS') {
 			await route.fulfill({ status: 204, headers: corsHeaders });
+			return;
+		}
+		if (offlineMode) { offlineRequestCount++; await route.abort('failed'); return; }
+		if (url.pathname === '/auth/v1/token') {
+			refreshAttempts++;
+			await respond(200, {
+				access_token: 'refreshed-access-token',
+				refresh_token: 'refreshed-refresh-token',
+				token_type: 'bearer',
+				expires_in: 3600,
+				user: testUser
+			});
 			return;
 		}
 		if (url.pathname === '/auth/v1/user') {
@@ -66,6 +81,7 @@ test('retries family writes and protects cloud schedule creation', async ({ brow
 			return;
 		}
 		if (url.pathname === '/rest/v1/family_members') {
+			membershipReads++;
 			await respond(200, [{ family_id: '123e4567-e89b-12d3-a456-426614174001', role: 'owner', families: { name: 'Семья' } }]);
 			return;
 		}
@@ -199,6 +215,17 @@ test('retries family writes and protects cloud schedule creation', async ({ brow
 	});
 
 	await page.addInitScript(() => {
+		let testNow = Date.now();
+		Date.now = () => testNow;
+		(window as Window & { advanceTestTime?: (milliseconds: number) => void }).advanceTestTime = (milliseconds) => { testNow += milliseconds; };
+		const originalSetTimeout = window.setTimeout.bind(window);
+		window.setTimeout = ((handler: TimerHandler, timeout?: number, ...args: unknown[]) => {
+			if (timeout === 65_000) {
+				(window as Window & { authRetryScheduled?: boolean }).authRetryScheduled = true;
+				return originalSetTimeout(handler, 20, ...args);
+			}
+			return originalSetTimeout(handler, timeout, ...args);
+		}) as typeof window.setTimeout;
 		const createObjectURL = URL.createObjectURL.bind(URL);
 		URL.createObjectURL = ((blob: Blob) => {
 			if (blob.type === 'application/json') {
@@ -207,7 +234,7 @@ test('retries family writes and protects cloud schedule creation', async ({ brow
 			}
 			return createObjectURL(blob);
 		}) as typeof URL.createObjectURL;
-		localStorage.setItem('sb-outbox-test-auth-token', JSON.stringify({
+		if (!localStorage.getItem('sb-outbox-test-auth-token')) localStorage.setItem('sb-outbox-test-auth-token', JSON.stringify({
 			access_token: 'test-access-token',
 			refresh_token: 'test-refresh-token',
 			token_type: 'bearer',
@@ -276,7 +303,6 @@ test('retries family writes and protects cloud schedule creation', async ({ brow
 		await expect.poll(() => pushAttempts).toBe(3);
 		expect(serverEvents).toHaveLength(2);
 		await expect.poll(() => page.evaluate(() => localStorage.getItem('lapki:family:123e4567-e89b-12d3-a456-426614174001:pendingPushEvents'))).toBe('[]');
-
 		await page.getByRole('button', { name: 'Настройки', exact: true }).click();
 		await page.getByRole('button', { name: 'Изменить профиль Рада', exact: true }).click();
 		await page.locator('#pet-name').fill('Рада новая');
@@ -350,6 +376,60 @@ test('retries family writes and protects cloud schedule creation', async ({ brow
 		const backupJson = await page.evaluate(() => (window as Window & { lapkiBackupJson?: string }).lapkiBackupJson ?? '');
 		const backup = JSON.parse(backupJson) as { schedules: Array<{ timezone?: string }> };
 		expect(backup.schedules).toContainEqual(expect.objectContaining({ timezone: 'Europe/Moscow' }));
+		expect(await page.evaluate(() => localStorage.getItem('lapki:user:123e4567-e89b-12d3-a456-426614174000:familyId'))).toBe('123e4567-e89b-12d3-a456-426614174001');
+		await context.setOffline(true);
+		await page.reload();
+		await expect(page.locator('.app-shell')).toHaveAttribute('data-ready', 'true');
+		await expect(page.locator('.cloud-error')).toContainText('live-обновления отключены', { timeout: 12000 });
+		await expect(page.getByRole('button', { name: 'Переподключить' })).toBeVisible();
+		await context.setOffline(false);
+		serverEvents.push({
+			id: '123e4567-e89b-12d3-a456-426614174005',
+			pet_id: '123e4567-e89b-12d3-a456-426614174002',
+			kind: 'water',
+			occurred_at: new Date().toISOString(),
+			author_id: testUser.id,
+			actor_name: 'Аня',
+			amount: null,
+			unit: null,
+			label: 'Пропущенное обновление',
+			note: null
+		});
+		await page.getByRole('button', { name: 'Главная', exact: true }).click();
+		await page.getByRole('button', { name: 'Переподключить' }).click();
+		await expect(page.locator('.timeline .timeline-copy strong').filter({ hasText: 'Вода' })).toBeVisible();
+		offlineMode = true;
+		await context.setOffline(true);
+		await page.evaluate(() => {
+			const authKey = 'sb-outbox-test-auth-token';
+			const session = JSON.parse(localStorage.getItem(authKey) ?? 'null') as { expires_at?: number } | null;
+			if (session) localStorage.setItem(authKey, JSON.stringify({ ...session, expires_at: 1 }));
+		});
+		await page.reload();
+		await expect.poll(() => offlineRequestCount, { timeout: 10000 }).toBeGreaterThan(0);
+		await expect(page.locator('.app-shell')).toHaveAttribute('data-ready', 'true');
+		await expect(page.locator('.cloud-error')).toContainText('Показана сохранённая копия', { timeout: 12000 });
+		await expect(page.getByRole('heading', { name: 'День Рада' })).toBeVisible();
+		expect(await page.evaluate(() => {
+			const session = JSON.parse(localStorage.getItem('sb-outbox-test-auth-token') ?? 'null') as { user?: { id?: string }; expires_at?: number } | null;
+			return { userId: session?.user?.id, expiresAt: session?.expires_at };
+		})).toEqual({ userId: testUser.id, expiresAt: 1 });
+		await page.getByRole('button', { name: 'Расписание', exact: true }).click();
+		await expect(page.getByText('Пояс: Europe/Moscow', { exact: true })).toBeVisible();
+		offlineMode = false;
+		const readsBeforeRecovery = membershipReads;
+		await context.setOffline(false);
+		await page.evaluate(() => window.dispatchEvent(new Event('online')));
+		const refreshAttemptsBeforeRecovery = refreshAttempts;
+		await expect.poll(async () => refreshAttempts > refreshAttemptsBeforeRecovery || await page.evaluate(() => (window as Window & { authRetryScheduled?: boolean }).authRetryScheduled ?? false)).toBe(true);
+		if (await page.evaluate(() => (window as Window & { authRetryScheduled?: boolean }).authRetryScheduled ?? false)) {
+			await page.evaluate(() => (window as Window & { advanceTestTime: (milliseconds: number) => void }).advanceTestTime(61_000));
+		}
+		await expect.poll(() => refreshAttempts).toBeGreaterThan(refreshAttemptsBeforeRecovery);
+		await expect.poll(() => membershipReads).toBeGreaterThan(readsBeforeRecovery);
+		await expect(page.getByRole('heading', { name: 'Расписание дел' })).toBeVisible();
+		await expect(page.getByText('Пояс: Europe/Moscow', { exact: true })).toBeVisible();
+		await expect(page.locator('.cloud-error')).not.toContainText('Показана сохранённая копия');
 		expect(pageErrors).toEqual([]);
 	} finally {
 		await context.close();

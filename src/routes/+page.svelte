@@ -2,10 +2,11 @@
 	import { onMount, tick } from 'svelte';
 	import { base } from '$app/paths';
 	import BowlScene from '$lib/BowlScene.svelte';
+	import AppIcon from '$lib/AppIcon.svelte';
 	import Illustration from '$lib/Illustration.svelte';
-	import { addEvent, clearDataScope, flushPendingEvents, getEvents, getPendingEvents, getPendingPushEvents, getPets, getSchedules, isValidBackup, isValidCareAmount, legacyStarterPetId, mergePendingEvents, parseOptionalAmount, removePendingEvent, removePendingPushEvent, saveEvents, savePendingEvent, savePendingPushEvent, savePets, saveSchedules, setDataScope, todayMeals } from '$lib/store';
-	import { careIcons, careLabels, type CareEvent, type CareKind, type CareSchedule, type Pet } from '$lib/types';
-	import { supabaseClient } from '$lib/supabase';
+	import { addEvent, clearDataScope, flushPendingEvents, getCachedFamilyId, getEvents, getPendingEvents, getPendingPushEvents, getPets, getSchedules, isValidBackup, isValidCareAmount, legacyStarterPetId, mergePendingEvents, parseOptionalAmount, removePendingEvent, removePendingPushEvent, saveCachedFamilyId, saveEvents, savePendingEvent, savePendingPushEvent, savePets, saveSchedules, setDataScope, todayMeals } from '$lib/store';
+	import { careLabels, type CareEvent, type CareKind, type CareSchedule, type Pet } from '$lib/types';
+	import { getStoredAuthUserId, refreshStoredAuthSession, supabaseClient } from '$lib/supabase';
 	import { fetchAllPages } from '$lib/paginated-query';
 	import { findNextSchedule, getZonedDateParts } from '$lib/schedule';
 	import { removePushSubscription } from '$lib/push-subscription';
@@ -29,6 +30,7 @@
 	let toast = $state('');
 	let familyLoadError = $state('');
 	let familyLoadPending = $state(false);
+	let familyRealtimeError = $state('');
 	let exportingBackup = $state(false);
 	let amount = $state<string | number | undefined>('');
 	let label = $state('');
@@ -49,9 +51,13 @@
 	let inviteLink = $state('');
 	let inviteEmail = $state('');
 	let familyChannel: RealtimeChannel | null = null;
+	let familyChannelFamilyId = '';
 	let familyRefreshTimer: ReturnType<typeof setTimeout>;
 	let familyChangeVersion = 0;
 	let familyLoadVersion = 0;
+	let familyChannelVersion = 0;
+	let familyChannelHadError = false;
+	let familyChannelNeedsCatchUp = false;
 	let sessionVersion = 0;
 	let pendingAuthSignOutVersion: number | null = null;
 	let signedOutUserId = '';
@@ -76,6 +82,8 @@
 	let careDialog = $state<HTMLDivElement>();
 	let restoreFocusTarget: HTMLElement | null = null;
 	let toastTimer: ReturnType<typeof setTimeout>;
+	let authRecoveryTimer: number | undefined;
+	const authRecoveryRetryDelayMs = 65_000;
 	let authListener: { unsubscribe: () => void } | null = null;
 	const kindOptions: CareKind[] = ['meal', 'walk', 'water', 'medicine', 'weight', 'vet', 'vaccine'];
 	const supabase = supabaseClient();
@@ -98,9 +106,7 @@
 
 	onMount(() => {
 		setDataScope('local');
-		const retryFamilySync = () => {
-			if (supabase && currentUserId) void loadFamily(currentUserId);
-		};
+		const retryFamilySync = () => { if (supabase) void retryCloudConnection(); };
 		const updateCurrentTime = () => currentTime = new Date();
 		const scheduleClock = window.setInterval(updateCurrentTime, 60_000);
 		window.addEventListener('online', retryFamilySync);
@@ -115,25 +121,61 @@
 			pets = getPets(); events = getEvents(); schedules = getSchedules();
 			appReady = true;
 			const authSessionVersion = sessionVersion;
-			void supabase.auth.getUser().then(async ({ data }) => {
+			const startupUserId = getStoredAuthUserId();
+			void withTimeout(supabase.auth.getSession(), 10_000).then(async ({ data, error }) => {
 				if (authSessionVersion !== sessionVersion) return;
-				if (!data.user) {
+				if (error) throw error;
+				const sessionUser = data.session?.user;
+				if (!sessionUser) {
+					if (startupUserId) {
+						currentUserId = startupUserId;
+						cloudUser = 'Сохранённый аккаунт';
+						restoreFamilyCache(startupUserId);
+						familyLoadError = 'Не удалось проверить вход. Показана сохранённая копия; подключитесь к сети и повторите загрузку.';
+						familyLoadPending = false;
+						return;
+					}
 					familyLoadPending = false;
+					currentUserId = ''; cloudUser = ''; familyId = ''; familyUserId = ''; familyRole = ''; familyName = '';
+					setDataScope('local');
 					pets = getPets(); events = getEvents(); schedules = getSchedules();
 					return;
 				}
-				currentUserId = data.user.id;
-				cloudUser = data.user.user_metadata.display_name || data.user.email || '';
-				member = data.user.user_metadata.display_name || data.user.email?.split('@')[0] || member;
-				if (await loadFamily(data.user.id) && new URLSearchParams(location.search).has('invite')) await acceptInvite();
+				currentUserId = sessionUser.id;
+				cloudUser = sessionUser.user_metadata.display_name || sessionUser.email || '';
+				member = sessionUser.user_metadata.display_name || sessionUser.email?.split('@')[0] || member;
+				restoreFamilyCache(sessionUser.id);
+				const { data: userData, error: userError } = await withTimeout(supabase.auth.getUser(), 10_000);
+				if (authSessionVersion !== sessionVersion) return;
+				if (userError || !userData.user) {
+					familyLoadError = 'Не удалось проверить вход. Показана сохранённая копия; подключитесь к сети и повторите загрузку.';
+					familyLoadPending = false;
+					return;
+				}
+				const verifiedUser = userData.user;
+				currentUserId = verifiedUser.id;
+				cloudUser = verifiedUser.user_metadata.display_name || verifiedUser.email || '';
+				member = verifiedUser.user_metadata.display_name || verifiedUser.email?.split('@')[0] || member;
+				if (await loadFamily(verifiedUser.id) && new URLSearchParams(location.search).has('invite')) await acceptInvite();
 				if (authSessionVersion === sessionVersion) void refreshPushStatus(sessionVersion);
 			}).catch(() => {
 				if (authSessionVersion !== sessionVersion) return;
 				familyLoadPending = false;
-				setDataScope('local');
-				currentUserId = ''; cloudUser = ''; familyId = ''; familyUserId = ''; familyRole = ''; familyName = '';
-				pets = getPets(); events = getEvents(); schedules = getSchedules();
-				notify('Не удалось загрузить семейный профиль; показаны данные этого устройства');
+				const storedUserId = currentUserId || getStoredAuthUserId() || startupUserId;
+				if (storedUserId) {
+					currentUserId = storedUserId;
+					cloudUser ||= 'Сохранённый аккаунт';
+					restoreFamilyCache(storedUserId);
+					familyLoadError = 'Не удалось проверить вход. Показана сохранённая копия; подключитесь к сети и повторите загрузку.';
+					return;
+				}
+				if (currentUserId) {
+					familyLoadError = 'Не удалось проверить вход. Показана сохранённая копия; подключитесь к сети и повторите загрузку.';
+				} else {
+					setDataScope('local');
+					pets = getPets(); events = getEvents(); schedules = getSchedules();
+					notify('Не удалось загрузить семейный профиль; показаны данные этого устройства');
+				}
 			});
 		} else {
 			pets = getPets(); events = getEvents(); schedules = getSchedules();
@@ -142,6 +184,8 @@
 		void refreshPushStatus(sessionVersion);
 		if (supabase) authListener = supabase.auth.onAuthStateChange((event, session) => {
 			if (event === 'SIGNED_OUT') {
+				clearTimeout(authRecoveryTimer);
+				authRecoveryTimer = undefined;
 				sessionVersion += 1;
 				const signOutVersion = sessionVersion;
 				signedOutUserId = currentUserId;
@@ -167,6 +211,7 @@
 					cloudUser = session.user.user_metadata.display_name || session.user.email || '';
 					member = session.user.user_metadata.display_name || session.user.email?.split('@')[0] || member;
 					localStorage.setItem('lapki:member', member);
+					restoreFamilyCache(session.user.id);
 					const pushCleanup = previousUserId && previousUserId !== session.user.id
 						? cleanupPushForAccountChange(session.user.id)
 						: Promise.resolve();
@@ -185,14 +230,23 @@
 			document.removeEventListener('visibilitychange', updateCurrentTime);
 			clearInterval(scheduleClock);
 			if (familyChannel && supabase) void supabase.removeChannel(familyChannel);
+			familyChannel = null; familyChannelFamilyId = ''; familyChannelVersion++;
 			authListener?.unsubscribe();
 			clearTimeout(toastTimer);
+			clearTimeout(authRecoveryTimer);
 			clearTimeout(familyRefreshTimer);
 		};
 	});
 
 	function notify(message: string) {
 		toast = message; clearTimeout(toastTimer); toastTimer = setTimeout(() => toast = '', 2800);
+	}
+	function withTimeout<T>(task: PromiseLike<T>, timeoutMs: number): Promise<T> {
+		let timeoutId: ReturnType<typeof setTimeout> | undefined;
+		return Promise.race([
+			Promise.resolve(task),
+			new Promise<T>((_, reject) => { timeoutId = setTimeout(() => reject(new Error('Network request timed out')), timeoutMs); })
+		]).finally(() => { if (timeoutId) clearTimeout(timeoutId); });
 	}
 	function navigateToTab(nextTab: 'home' | 'history' | 'schedule' | 'settings') {
 		clearTimeout(toastTimer);
@@ -205,6 +259,58 @@
 		return true;
 	}
 	function getFamilyContext(): FamilyContext { return { userId: currentUserId, familyId, sessionVersion }; }
+	function restoreFamilyCache(userId: string) {
+		const cachedFamilyId = getCachedFamilyId(userId);
+		familyId = cachedFamilyId;
+		familyUserId = cachedFamilyId ? userId : '';
+		familyRole = ''; familyName = '';
+		setDataScope(cachedFamilyId ? `family:${cachedFamilyId}` : `user:${userId}`);
+		pets = getPets(); events = getEvents(); schedules = getSchedules();
+		return cachedFamilyId;
+	}
+	async function retryCloudConnection() {
+		if (!supabase) return;
+		const storedUserId = currentUserId || getStoredAuthUserId();
+		if (!storedUserId) return;
+		const expectedSessionVersion = sessionVersion;
+		familyLoadPending = true;
+		try {
+			let { data, error } = await withTimeout(supabase.auth.getSession(), 10_000);
+			if (error || !data.session) {
+				const refreshed = await withTimeout(refreshStoredAuthSession(supabase), 10_000).catch(() => false);
+				if (!refreshed) throw error ?? new Error('Session refresh failed');
+				({ data, error } = await withTimeout(supabase.auth.getSession(), 10_000));
+			}
+			if (error || !data.session || data.session.user.id !== storedUserId) throw error ?? new Error('Session is unavailable');
+			let userResult = await withTimeout(supabase.auth.getUser(), 10_000);
+			if (userResult.error || !userResult.data.user || userResult.data.user.id !== storedUserId) {
+				const refreshed = await withTimeout(refreshStoredAuthSession(supabase), 10_000).catch(() => false);
+				if (!refreshed) throw userResult.error ?? new Error('User is unavailable');
+				({ data, error } = await withTimeout(supabase.auth.getSession(), 10_000));
+				if (error || !data.session || data.session.user.id !== storedUserId) throw error ?? new Error('Session is unavailable');
+				userResult = await withTimeout(supabase.auth.getUser(), 10_000);
+			}
+			const { data: userData, error: userError } = userResult;
+			if (userError || !userData.user || userData.user.id !== storedUserId) throw userError ?? new Error('User is unavailable');
+			if (expectedSessionVersion !== sessionVersion || currentUserId !== storedUserId) return;
+			cloudUser = userData.user.user_metadata.display_name || userData.user.email || 'Аккаунт';
+			clearTimeout(authRecoveryTimer);
+			authRecoveryTimer = undefined;
+			familyLoadError = '';
+			if (await loadFamily(storedUserId) && expectedSessionVersion === sessionVersion) void refreshPushStatus(sessionVersion);
+		} catch {
+			if (expectedSessionVersion === sessionVersion && currentUserId === storedUserId) {
+				familyLoadPending = false;
+				familyLoadError = 'Не удалось проверить вход. Показана сохранённая копия; повторите попытку после подключения к сети.';
+				if (navigator.onLine && !authRecoveryTimer) {
+					authRecoveryTimer = window.setTimeout(() => {
+						authRecoveryTimer = undefined;
+						if (navigator.onLine && expectedSessionVersion === sessionVersion && currentUserId === storedUserId) void retryCloudConnection();
+					}, authRecoveryRetryDelayMs);
+				}
+			}
+		}
+	}
 	function isCurrentFamilyContext(context: FamilyContext) {
 		return context.userId === currentUserId && context.familyId === familyId && context.sessionVersion === sessionVersion;
 	}
@@ -319,7 +425,7 @@
 		}
 		return false;
 	}
-	async function loadFamily(userId = '') {
+	async function loadFamily(userId = '', reconnectRealtime = true) {
 		if (!supabase) return true;
 		const loadVersion = ++familyLoadVersion;
 		const activeUserId = userId || currentUserId;
@@ -337,8 +443,11 @@
 			setDataScope(activeUserId ? `user:${activeUserId}` : 'local');
 			pets = getPets(); events = getEvents(); schedules = getSchedules();
 		}
-		if (familyChannel) { void supabase.removeChannel(familyChannel); familyChannel = null; }
-		const membershipResult = await Promise.resolve(supabase.from('family_members').select('family_id,role,families(name)').limit(1)).catch(() => null);
+		if (reconnectRealtime) removeFamilyChannel();
+		const membershipResult = await withTimeout(
+			Promise.resolve(supabase.from('family_members').select('family_id,role,families(name)').limit(1)),
+			10_000
+		).catch(() => null);
 		if (!isCurrentLoad()) return finishFamilyLoad(false);
 		if (!membershipResult || membershipResult.error) {
 			if (previousFamilyId && previousFamilyUserId === activeUserId) {
@@ -349,13 +458,17 @@
 				if (activeUserId) setDataScope(`user:${activeUserId}`);
 				pets = getPets(); events = getEvents(); schedules = getSchedules();
 			}
-			familyLoadError = 'Не удалось проверить семейный профиль. Повторите загрузку.';
+			familyLoadError = previousFamilyId && previousFamilyUserId === activeUserId
+				? 'Не удалось проверить семейный профиль. Показана сохранённая копия; подключитесь к сети и повторите загрузку.'
+				: 'Не удалось проверить семейный профиль. Подключитесь к сети и повторите загрузку.';
 			return finishFamilyLoad(false);
 		}
 		const membership = membershipResult.data?.[0];
 		if (!membership) {
+			removeFamilyChannel();
 			const revokedFamilyId = familyId;
 			familyId = ''; familyRole = ''; familyName = ''; familyUserId = activeUserId;
+			saveCachedFamilyId(activeUserId, null);
 			if (revokedFamilyId) clearDataScope(`family:${revokedFamilyId}`);
 			if (activeUserId) setDataScope(`user:${activeUserId}`);
 			pets = getPets(); events = getEvents(); schedules = getSchedules();
@@ -364,10 +477,12 @@
 		}
 		familyId = membership.family_id;
 		familyUserId = activeUserId;
+		if (previousFamilyId && previousFamilyUserId === activeUserId && previousFamilyId !== familyId) clearDataScope(`family:${previousFamilyId}`);
+		saveCachedFamilyId(activeUserId, familyId);
 		familyRole = membership.role;
 		setDataScope(`family:${familyId}`);
 		familyName = (membership.families as { name?: string } | null)?.name ?? '';
-		const results = await Promise.all([
+		const results = await withTimeout(Promise.all([
 			fetchAllPages((afterId, pageSize) => {
 				let query = supabase.from('pets').select('id,name,breed,birthday,photo_url,allergies,health_notes').eq('family_id', familyId).order('id', { ascending: true });
 				if (afterId) query = query.gt('id', afterId);
@@ -383,7 +498,7 @@
 				if (afterId) query = query.gt('id', afterId);
 				return query.limit(pageSize);
 			})
-		]).catch(() => null);
+		]), 10_000).catch(() => null);
 		if (!isCurrentLoad()) return finishFamilyLoad(false);
 		if (!results) {
 			pets = getPets(); events = getEvents(); schedules = getSchedules();
@@ -402,19 +517,45 @@
 		petIndex = 0; savePets(pets);
 		schedules = scheduleRows.map((row) => ({ id: row.id, petId: row.pet_id, kind: row.kind, title: row.title, time: String(row.local_time).slice(0, 5), timezone: row.timezone, days: row.weekdays, enabled: row.is_active }));
 		saveSchedules(schedules);
-		const channelVersion = loadVersion;
 		const channelFamilyId = familyId;
-		if (familyChannel) void supabase.removeChannel(familyChannel);
-		familyChannel = supabase.channel(`family:${familyId}`, { config: { private: true } })
-			.on('broadcast', { event: '*' }, () => {
-				if (familyLoadVersion !== channelVersion || familyId !== channelFamilyId) return;
-				familyChangeVersion++;
-				clearTimeout(familyRefreshTimer);
-				familyRefreshTimer = setTimeout(() => void loadFamily(currentUserId), 150);
-			})
-			.subscribe();
+		if (reconnectRealtime || familyChannelFamilyId !== channelFamilyId) subscribeFamilyChannel(channelFamilyId, activeUserId);
 		void syncPendingEvents(getFamilyContext());
 		return finishFamilyLoad(true);
+	}
+	function removeFamilyChannel() {
+		familyChannelVersion++;
+		familyChannelFamilyId = '';
+		familyChannelHadError = false;
+		familyChannelNeedsCatchUp = false;
+		if (familyChannel && supabase) void supabase.removeChannel(familyChannel);
+		familyChannel = null;
+	}
+	function subscribeFamilyChannel(channelFamilyId: string, channelUserId: string) {
+		if (!supabase) return;
+		removeFamilyChannel();
+		const channelVersion = familyChannelVersion;
+		familyChannelFamilyId = channelFamilyId;
+		familyChannelNeedsCatchUp = true;
+		familyChannel = supabase.channel(`family:${channelFamilyId}`, { config: { private: true } })
+			.on('broadcast', { event: '*' }, () => {
+				if (familyChannelVersion !== channelVersion || familyId !== channelFamilyId || currentUserId !== channelUserId) return;
+				familyChangeVersion++;
+				clearTimeout(familyRefreshTimer);
+				familyRefreshTimer = setTimeout(() => void loadFamily(channelUserId, false), 150);
+			})
+			.subscribe((status) => {
+				if (familyChannelVersion !== channelVersion || familyId !== channelFamilyId || currentUserId !== channelUserId) return;
+				if (status === 'SUBSCRIBED') {
+					const shouldCatchUp = familyChannelHadError || familyChannelNeedsCatchUp;
+					familyChannelHadError = false;
+					familyChannelNeedsCatchUp = false;
+					familyRealtimeError = '';
+					if (shouldCatchUp) void loadFamily(channelUserId, false);
+				} else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+					familyChannelHadError = true;
+					familyRealtimeError = 'Семейные данные загружены, но live-обновления отключены. Повторите подключение.';
+				}
+			});
 	}
 	async function setupFamily() {
 		if (!supabase) return;
@@ -744,9 +885,10 @@
 	function clearCloudSession() {
 		sessionVersion += 1; familyLoadVersion += 1; familyLoadPending = false;
 		if (familyChannel && supabase) void supabase.removeChannel(familyChannel);
-		familyChannel = null; cloudUser = ''; currentUserId = ''; familyId = ''; familyUserId = ''; familyRole = ''; familyName = '';
+		familyChannel = null; familyChannelFamilyId = ''; familyChannelVersion++; familyChannelHadError = false; familyChannelNeedsCatchUp = false;
+		cloudUser = ''; currentUserId = ''; familyId = ''; familyUserId = ''; familyRole = ''; familyName = '';
 		inviteLink = ''; inviteEmail = '';
-		familyLoadError = ''; setDataScope('local'); pets = getPets(); events = getEvents(); schedules = getSchedules(); petIndex = 0;
+		familyLoadError = ''; familyRealtimeError = ''; setDataScope('local'); pets = getPets(); events = getEvents(); schedules = getSchedules(); petIndex = 0;
 	}
 	async function refreshPushStatus(expectedSessionVersion: number) {
 		const statusVersion = ++pushStatusVersion;
@@ -946,11 +1088,11 @@
 
 <div class:reduce-motion={reducedMotion} class="app-shell" data-ready={appReady}>
 	<header class="topbar">
-		<a class="brand" href={`${base}/`} aria-label="Лапки — на главную"><span class="brand-mark">⌁</span><span>лапки</span></a>
+		<a class="brand" href={`${base}/`} aria-label="Лапки — на главную"><span class="brand-mark"><AppIcon kind="paw" /></span><span>лапки</span></a>
 		<div class="top-date">{dateText}</div>
 		<button class="avatar" aria-label="Открыть настройки" onclick={() => navigateToTab('settings')}>{member.slice(0,1).toUpperCase()}</button>
 	</header>
-	{#if familyLoadError || familyLoadPending}<div class="cloud-error" role={familyLoadError ? 'alert' : 'status'}><p>{familyLoadError || 'Проверяем семейный профиль…'}</p><button class="quiet-button" disabled={familyLoadPending} onclick={() => void loadFamily(currentUserId)}>{familyLoadPending ? 'Загружаем…' : 'Повторить загрузку'}</button></div>{/if}
+	{#if familyLoadError || familyLoadPending || familyRealtimeError}<div class="cloud-error" role={familyLoadError ? 'alert' : 'status'}><p>{familyLoadError || (familyLoadPending ? 'Проверяем семейный профиль…' : familyRealtimeError)}</p><button class="quiet-button" disabled={familyLoadPending} onclick={() => familyLoadError || familyRealtimeError ? void retryCloudConnection() : void loadFamily(currentUserId)}>{familyLoadPending ? 'Загружаем…' : familyRealtimeError && !familyLoadError ? 'Переподключить' : 'Повторить загрузку'}</button></div>{/if}
 
 	<main>
 		{#if !appReady}
@@ -992,7 +1134,7 @@
 					<div class="care-buttons">
 						{#each kindOptions as kind, i}
 							<button class:featured={i === 0} class="care-button" aria-label={careLabels[kind]} onclick={() => openForm(kind)}>
-								<span class="care-icon">{careIcons[kind]}</span><span>{careLabels[kind]}</span>{#if i === 0}<span class="shortcut">+</span>{/if}
+								<span class="care-icon"><AppIcon kind={kind} /></span><span>{careLabels[kind]}</span>{#if i === 0}<span class="shortcut">+</span>{/if}
 							</button>
 						{/each}
 					</div>
@@ -1003,23 +1145,23 @@
 					{#if sortedEvents.length}
 						<div class="timeline">
 							{#each sortedEvents.slice(0, 4) as event}
-								<div class="timeline-item"><span class="timeline-glyph">{careIcons[event.kind]}</span><div class="timeline-copy"><strong>{careLabels[event.kind]}{event.amount ? ` · ${event.amount} ${event.unit ?? ''}` : ''}</strong><span>{event.by}{event.label ? ` · ${event.label}` : ''}</span></div><time>{timeOf(event.occurredAt)}</time></div>
+								<div class="timeline-item"><span class="timeline-glyph"><AppIcon kind={event.kind} /></span><div class="timeline-copy"><strong>{careLabels[event.kind]}{event.amount ? ` · ${event.amount} ${event.unit ?? ''}` : ''}</strong><span>{event.by}{event.label ? ` · ${event.label}` : ''}</span></div><time>{timeOf(event.occurredAt)}</time></div>
 							{/each}
 						</div>
-					{:else}<div class="empty-line"><span>☀</span><p>День только начинается — отметьте первый момент заботы.</p></div>{/if}
+					{:else}<div class="empty-line"><AppIcon kind="sunrise" /><p>День только начинается — отметьте первый момент заботы.</p></div>{/if}
 				</section>
 			</div>
 
 			<aside class="side-column">
-				<div class="care-note"><span class="note-star">✳</span><p class="overline">ОДНА НЕДЕЛЯ РЯДОМ</p><strong>{weekCount}<span> дел заботы</span></strong><p>Каждая отметка помогает всей семье быть на одной волне.</p></div>
+				<div class="care-note"><AppIcon kind="paw" className="care-note-paw" /><AppIcon kind="sparkle" className="note-star" /><p class="overline">ОДНА НЕДЕЛЯ РЯДОМ</p><strong>{weekCount}<span> дел заботы</span></strong><p>Каждая отметка помогает всей семье быть на одной волне.</p></div>
 				<div class="family-card"><div class="family-header">{#if familyId}<div class="family-dots"><b>{member.slice(0,1).toUpperCase()}</b>{#if familyRole === 'owner'}<b>+</b>{/if}</div>{:else}<span class="overline">НА ЭТОМ УСТРОЙСТВЕ</span>{/if}{#if familyRole === 'owner'}<button aria-label="Добавить участника" onclick={() => { navigateToTab('settings'); settingsPanel = 'profile'; }}>＋</button>{/if}</div><h3>{familyId ? 'Свои рядом' : 'Дневник ухода'}</h3><p>{familyId ? `Общий профиль${familyName ? ` · ${familyName}` : ''}` : cloudUser ? 'Создайте семейный профиль для синхронизации.' : 'Записи пока сохранены только в этом браузере.'}</p><button class="invite-link" onclick={() => { navigateToTab('settings'); settingsPanel = cloudUser ? 'profile' : 'auth'; }}>{familyRole === 'owner' ? 'Пригласить участника ↗' : familyId ? 'Настроить профиль семьи ↗' : cloudUser ? 'Создать семейный профиль ↗' : 'Подключить семью ↗'}</button></div>
-				<div class="reminder-card"><div class="reminder-mark">◷</div><div><span>СЛЕДУЮЩЕЕ</span><strong>{nextSchedule?.schedule.title ?? 'Пока без напоминаний'}</strong><small>{nextScheduleTime()}</small></div><button aria-label="Открыть расписание" onclick={() => navigateToTab('schedule')}>↗</button></div>
+				<div class="reminder-card"><div class="reminder-mark"><AppIcon kind="clock" /></div><div><span>СЛЕДУЮЩЕЕ</span><strong>{nextSchedule?.schedule.title ?? 'Пока без напоминаний'}</strong><small>{nextScheduleTime()}</small></div><button aria-label="Открыть расписание" onclick={() => navigateToTab('schedule')}><AppIcon kind="arrow" /></button></div>
 			</aside>
 			{/if}
 		{:else if tab === 'history'}
 			<section class="page-panel"><div class="page-title"><div><p class="overline">ПАМЯТЬ О ЗАБОТЕ</p><h1>История <em>{activePet?.name ?? 'ухода'}</em></h1></div><span class="history-total">{sortedEvents.length} записей</span></div>
 				{#if !activePet && sortedEvents.length}<p class="fine-print">Эти записи сохранены из прежнего стартового профиля. Они останутся в журнале и привяжутся к собаке после добавления профиля.</p>{/if}
-				{#if sortedEvents.length}<div class="history-list">{#each sortedEvents as event}<article class="history-row"><div class="history-icon">{careIcons[event.kind]}</div><div class="history-copy"><strong>{careLabels[event.kind]}{event.amount ? ` · ${event.amount} ${event.unit ?? ''}` : ''}</strong><p>{event.label ?? event.note ?? 'Без заметки'}</p><small>{event.by}</small></div><time><b>{timeOf(event.occurredAt)}</b><span>{dayOf(event.occurredAt)}</span></time>{#if activePet && (!supabase || !familyId || familyRole === 'owner' || event.authorId === currentUserId)}<button aria-label="Исправить запись" onclick={() => editEvent(event)}>✎</button>{/if}{#if activePet && (!supabase || !familyId || familyRole === 'owner')}<button aria-label="Удалить запись" onclick={() => void removeEvent(event)}>×</button>{/if}</article>{/each}</div>{:else}<div class="empty-state"><span>⌁</span><h2>{activePet ? 'Тут появятся записи об уходе' : 'Добавьте профиль собаки'}</h2><p>{activePet ? 'Отмечайте кормление, прогулку и другие маленькие дела.' : 'Создайте профиль, чтобы начать дневник ухода.'}</p>{#if activePet}<button class="primary-button" onclick={() => openForm('meal')}>Отметить кормление</button>{:else if familyRole !== 'member'}<button class="primary-button" onclick={openPetSetup}>Добавить собаку</button>{/if}</div>{/if}
+				{#if sortedEvents.length}<div class="history-list">{#each sortedEvents as event}<article class="history-row"><div class="history-icon"><AppIcon kind={event.kind} /></div><div class="history-copy"><strong>{careLabels[event.kind]}{event.amount ? ` · ${event.amount} ${event.unit ?? ''}` : ''}</strong><p>{event.label ?? event.note ?? 'Без заметки'}</p><small>{event.by}</small></div><time><b>{timeOf(event.occurredAt)}</b><span>{dayOf(event.occurredAt)}</span></time>{#if activePet && (!supabase || !familyId || familyRole === 'owner' || event.authorId === currentUserId)}<button aria-label="Исправить запись" onclick={() => editEvent(event)}><AppIcon kind="edit" /></button>{/if}{#if activePet && (!supabase || !familyId || familyRole === 'owner')}<button aria-label="Удалить запись" onclick={() => void removeEvent(event)}><AppIcon kind="trash" /></button>{/if}</article>{/each}</div>{:else}<div class="empty-state"><AppIcon kind="paw" className="empty-mark" /><h2>{activePet ? 'Тут появятся записи об уходе' : 'Добавьте профиль собаки'}</h2><p>{activePet ? 'Отмечайте кормление, прогулку и другие маленькие дела.' : 'Создайте профиль, чтобы начать дневник ухода.'}</p>{#if activePet}<button class="primary-button" onclick={() => openForm('meal')}>Отметить кормление</button>{:else if familyRole !== 'member'}<button class="primary-button" onclick={openPetSetup}>Добавить собаку</button>{/if}</div>{/if}
 			</section>
 		{:else if tab === 'schedule'}
 			<section class="page-panel"><div class="page-title"><div><p class="overline">ЗАБОТА ВОВРЕМЯ</p><h1>Расписание <em>дел</em></h1></div></div>
@@ -1028,22 +1170,22 @@
 					<div class="schedule-list">
 						{#each schedules.filter((row) => row.petId === activePet?.id) as row}
 							<article class:disabled={!row.enabled} class="schedule-row">
-								<div class="schedule-symbol">{careIcons[row.kind]}</div>
+								<div class="schedule-symbol"><AppIcon kind={row.kind} /></div>
 								<div><strong>{row.title}</strong><span>{careLabels[row.kind]} · каждый день</span>{#if row.timezone}<small class="schedule-timezone">Пояс: {row.timezone}</small>{/if}</div>
 								<time>{row.time}</time>
 								<button role="switch" aria-checked={row.enabled} class:toggle-on={row.enabled} class="toggle" aria-label={row.enabled ? `Выключить: ${row.title}` : `Включить: ${row.title}`} disabled={Boolean(supabase && familyId && familyRole !== 'owner')} onclick={() => void toggleSchedule(row.id)}><i></i></button>
-								{#if !supabase || !familyId || familyRole === 'owner'}<button class="schedule-delete" aria-label={`Удалить напоминание: ${row.title}`} onclick={() => void removeSchedule(row.id)}>×</button>{/if}
+								{#if !supabase || !familyId || familyRole === 'owner'}<button class="schedule-delete" aria-label={`Удалить напоминание: ${row.title}`} onclick={() => void removeSchedule(row.id)}><AppIcon kind="trash" /></button>{/if}
 							</article>
 						{/each}
 					</div>
-				{:else}<div class="empty-line wide"><span>◷</span><p>Добавьте повторяющееся напоминание для кормления, лекарств или визита.</p></div>{/if}<p class="timezone-note">Время каждого напоминания считается в сохранённом часовом поясе. {!familyId ? 'Локальное расписание сохранено только здесь и не отправляет уведомления.' : 'Семейные push используют сохранённый пояс; для доставки нужны подписка на устройстве и настроенные VAPID и Cron в Supabase.'}</p>
-				{:else}<div class="empty-state"><span>◷</span><h2>Сначала добавьте собаку</h2><p>{legacyScheduleCount ? `Сохранено напоминаний: ${legacyScheduleCount}. Они останутся и привяжутся к собаке после добавления профиля.` : 'Расписание ухода будет привязано к профилю собаки.'}</p>{#if familyRole !== 'member'}<button class="primary-button" onclick={openPetSetup}>Добавить собаку</button>{/if}</div>{/if}
+				{:else}<div class="empty-line wide"><AppIcon kind="clock" /><p>Добавьте повторяющееся напоминание для кормления, лекарств или визита.</p></div>{/if}<p class="timezone-note">Время каждого напоминания считается в сохранённом часовом поясе. {!familyId ? 'Локальное расписание сохранено только здесь и не отправляет уведомления.' : 'Семейные push используют сохранённый пояс; для доставки нужны подписка на устройстве и настроенные VAPID и Cron в Supabase.'}</p>
+				{:else}<div class="empty-state"><AppIcon kind="clock" className="empty-mark" /><h2>Сначала добавьте собаку</h2><p>{legacyScheduleCount ? `Сохранено напоминаний: ${legacyScheduleCount}. Они останутся и привяжутся к собаке после добавления профиля.` : 'Расписание ухода будет привязано к профилю собаки.'}</p>{#if familyRole !== 'member'}<button class="primary-button" onclick={openPetSetup}>Добавить собаку</button>{/if}</div>{/if}
 			</section>
 		{:else}
-			<section class="page-panel settings-page"><div class="page-title"><div><p class="overline">ВСЁ ПО-ВАШЕМУ</p><h1>Настройки</h1></div><span class:cloud={!!cloudUser} class="mode-pill">{cloudUser ? '◉ синхронизация' : '○ на этом устройстве'}</span></div>
+			<section class="page-panel settings-page"><div class="page-title"><div><p class="overline">ВСЁ ПО-ВАШЕМУ</p><h1>Настройки</h1></div><span class:cloud={!!cloudUser} class="mode-pill"><AppIcon kind={cloudUser ? 'sync' : 'device'} />{cloudUser ? 'синхронизация' : 'на этом устройстве'}</span></div>
 				<div class="settings-grid"><div class="settings-main">
 						<section class="settings-block">
-							<div class="settings-heading"><div><h2>{familyId ? familyName || 'Моя семья' : 'Моя семья'}</h2><p>{cloudUser ? `В аккаунте ${cloudUser}` : 'Дневник сейчас хранится только здесь.'}</p></div><span>⌂</span></div>
+							<div class="settings-heading"><div><h2>{familyId ? familyName || 'Моя семья' : 'Моя семья'}</h2><p>{cloudUser ? `В аккаунте ${cloudUser}` : 'Дневник сейчас хранится только здесь.'}</p></div><AppIcon kind="family" /></div>
 							{#if cloudUser}<button class="secondary-button" disabled={signOutPending} onclick={signOut}>{signOutPending ? 'Выходим…' : 'Выйти из аккаунта'}</button>{:else if supabase}<button class="primary-button" onclick={() => settingsPanel = settingsPanel === 'auth' ? '' : 'auth'}>Войти или создать семью</button>{:else}<p class="fine-print">Семейный вход появится после подключения Supabase. Инструкция — в README репозитория.</p>{/if}
 							{#if settingsPanel === 'auth' && supabase}
 								<form class="auth-form" onsubmit={(event) => { event.preventDefault(); if (authMode === 'reset') void updatePassword(); else void authenticate(); }}>
@@ -1070,8 +1212,8 @@
 									<div class="pet-initial">{pet.name.slice(0,1)}</div>
 									<div><strong>{pet.name}</strong><span>{pet.breed} · {pet.weightKg ? `${pet.weightKg} кг` : 'вес не указан'}</span></div>
 									{#if !cloudUser || familyRole === 'owner'}
-										<button aria-label={`Изменить профиль ${pet.name}`} onclick={() => openPetEdit(pet)}>✎</button>
-										{#if pets.length > 1}<button aria-label={`Удалить профиль ${pet.name}`} onclick={() => void removePet(pet.id)}>×</button>{/if}
+										<button aria-label={`Изменить профиль ${pet.name}`} onclick={() => openPetEdit(pet)}><AppIcon kind="edit" /></button>
+										{#if pets.length > 1}<button aria-label={`Удалить профиль ${pet.name}`} onclick={() => void removePet(pet.id)}><AppIcon kind="trash" /></button>{/if}
 									{/if}
 								</div>
 							{/each}
@@ -1103,22 +1245,22 @@
 								{/if}
 							{/if}
 						</section>
-						<section class="settings-block"><div class="settings-heading"><div><h2>Ваши напоминания</h2><p>{pushEnabled ? 'Уведомления включены на этом устройстве.' : 'Нужны для событий семьи и расписания.'}</p></div><span>♧</span></div>{#if pushConfigured}{#if familyId}<button class="secondary-button" onclick={() => pushEnabled ? void disablePush() : void enablePush()}>{pushEnabled ? 'Отключить уведомления' : 'Включить уведомления'}</button>{:else}<button class="secondary-button" onclick={() => { navigateToTab('settings'); settingsPanel = cloudUser ? 'profile' : 'auth'; }}>{cloudUser ? 'Создать семейный профиль' : 'Войти в семейный профиль'}</button>{/if}{:else}<p class="fine-print">{supabase ? 'Клиент Supabase настроен. Для Push нужен публичный VAPID key в GitHub Actions; шаги и серверные ключи описаны в README.' : 'Для Push подключите Supabase и задайте публичный VAPID key в GitHub Actions. Шаги есть в README репозитория.'}</p>{/if}<p class="fine-print">На iPhone откройте сайт в Safari, добавьте его на экран «Домой» и включите уведомления внутри установленного PWA.</p></section>
-					</div><aside class="settings-side"><section class="settings-block"><div class="settings-heading"><div><h2>Внешний вид</h2><p>Легко для глаз и устройства</p></div><span>◐</span></div><label class="setting-toggle"><span>3D-миска</span><input type="checkbox" bind:checked={scene} onchange={() => localStorage.setItem('lapki:scene', String(scene))} /><i></i></label><label class="setting-toggle"><span>Звук отметки</span><input type="checkbox" bind:checked={soundEnabled} onchange={() => localStorage.setItem('lapki:sound', String(soundEnabled))} /><i></i></label><label class="setting-toggle"><span>Уменьшить анимацию</span><input type="checkbox" bind:checked={reducedMotion} onchange={() => localStorage.setItem('lapki:reduced-motion', String(reducedMotion))} /><i></i></label></section><section class="settings-block"><div class="settings-heading"><div><h2>Копия данных</h2><p>Храните свои записи в безопасности</p></div><span>↧</span></div><button class="secondary-button" disabled={exportingBackup} onclick={exportData}>{exportingBackup ? 'Готовим копию…' : 'Скачать резервную копию'}</button><button class="quiet-button" disabled={Boolean(cloudUser)} onclick={importData}>Восстановить из файла</button><input bind:this={fileInput} class="sr-only" type="file" accept="application/json" onchange={readBackup} /><p class="fine-print">{cloudUser ? 'Для восстановления выйдите в локальный режим.' : 'На бесплатном тарифе Supabase нет автоматических резервных копий.'}</p></section><section class="settings-block info-block"><p class="overline">ПРИВАТНОСТЬ</p><p>Локальные данные остаются в этом браузере. Общий доступ появляется после подключения Supabase; записи защищены политиками доступа семьи.</p><a href="https://supabase.com/docs/guides/platform/free" target="_blank" rel="noreferrer">О бесплатном тарифе Supabase ↗</a></section></aside></div>
+						<section class="settings-block"><div class="settings-heading"><div><h2>Ваши напоминания</h2><p>{pushEnabled ? 'Уведомления включены на этом устройстве.' : 'Нужны для событий семьи и расписания.'}</p></div><AppIcon kind="bell" /></div>{#if pushConfigured}{#if familyId}<button class="secondary-button" onclick={() => pushEnabled ? void disablePush() : void enablePush()}>{pushEnabled ? 'Отключить уведомления' : 'Включить уведомления'}</button>{:else}<button class="secondary-button" onclick={() => { navigateToTab('settings'); settingsPanel = cloudUser ? 'profile' : 'auth'; }}>{cloudUser ? 'Создать семейный профиль' : 'Войти в семейный профиль'}</button>{/if}{:else}<p class="fine-print">{supabase ? 'Клиент Supabase настроен. Для Push нужен публичный VAPID key в GitHub Actions; шаги и серверные ключи описаны в README.' : 'Для Push подключите Supabase и задайте публичный VAPID key в GitHub Actions. Шаги есть в README репозитория.'}</p>{/if}<p class="fine-print">На iPhone откройте сайт в Safari, добавьте его на экран «Домой» и включите уведомления внутри установленного PWA.</p></section>
+					</div><aside class="settings-side"><section class="settings-block"><div class="settings-heading"><div><h2>Внешний вид</h2><p>Легко для глаз и устройства</p></div><AppIcon kind="appearance" /></div><label class="setting-toggle"><span>3D-миска</span><input type="checkbox" bind:checked={scene} onchange={() => localStorage.setItem('lapki:scene', String(scene))} /><i></i></label><label class="setting-toggle"><span>Звук отметки</span><input type="checkbox" bind:checked={soundEnabled} onchange={() => localStorage.setItem('lapki:sound', String(soundEnabled))} /><i></i></label><label class="setting-toggle"><span>Уменьшить анимацию</span><input type="checkbox" bind:checked={reducedMotion} onchange={() => localStorage.setItem('lapki:reduced-motion', String(reducedMotion))} /><i></i></label></section><section class="settings-block"><div class="settings-heading"><div><h2>Копия данных</h2><p>Храните свои записи в безопасности</p></div><AppIcon kind="download" /></div><button class="secondary-button" disabled={exportingBackup} onclick={exportData}>{exportingBackup ? 'Готовим копию…' : 'Скачать резервную копию'}</button><button class="quiet-button" disabled={Boolean(cloudUser)} onclick={importData}>Восстановить из файла</button><input bind:this={fileInput} class="sr-only" type="file" accept="application/json" onchange={readBackup} /><p class="fine-print">{cloudUser ? 'Для восстановления выйдите в локальный режим.' : 'На бесплатном тарифе Supabase нет автоматических резервных копий.'}</p></section><section class="settings-block info-block"><p class="overline">ПРИВАТНОСТЬ</p><p>Локальные данные остаются в этом браузере. Общий доступ появляется после подключения Supabase; записи защищены политиками доступа семьи.</p><a href="https://supabase.com/docs/guides/platform/free" target="_blank" rel="noreferrer">О бесплатном тарифе Supabase ↗</a></section></aside></div>
 			</section>
 		{/if}
 	</main>
 
 	<nav class="bottom-nav" aria-label="Основная навигация">
-		<button class:active={tab === 'home'} aria-pressed={tab === 'home'} aria-label="Главная" onclick={() => navigateToTab('home')}><span>⌂</span>Сегодня</button>
-		<button class:active={tab === 'history'} aria-pressed={tab === 'history'} aria-label="История" onclick={() => navigateToTab('history')}><span>≋</span>История</button>
-		<button class:active={tab === 'schedule'} aria-pressed={tab === 'schedule'} aria-label="Расписание" onclick={() => navigateToTab('schedule')}><span>◷</span>План</button>
-		<button class:active={tab === 'settings'} aria-pressed={tab === 'settings'} aria-label="Настройки" onclick={() => navigateToTab('settings')}><span>◌</span>Моё</button>
+		<button class:active={tab === 'home'} aria-pressed={tab === 'home'} aria-label="Главная" onclick={() => navigateToTab('home')}><AppIcon kind="home" />Сегодня</button>
+		<button class:active={tab === 'history'} aria-pressed={tab === 'history'} aria-label="История" onclick={() => navigateToTab('history')}><AppIcon kind="history" />История</button>
+		<button class:active={tab === 'schedule'} aria-pressed={tab === 'schedule'} aria-label="Расписание" onclick={() => navigateToTab('schedule')}><AppIcon kind="calendar" />План</button>
+		<button class:active={tab === 'settings'} aria-pressed={tab === 'settings'} aria-label="Настройки" onclick={() => navigateToTab('settings')}><AppIcon kind="settings" />Моё</button>
 	</nav>
 
 	{#if sheetKind}
 		<div class="sheet-backdrop">
-			<div class="care-sheet" bind:this={careDialog} role="dialog" aria-modal="true" aria-labelledby="sheet-title" tabindex="-1" onkeydown={handleCareDialogKeydown}><div class="sheet-handle"></div><button class="sheet-close" aria-label="Закрыть" onclick={closeCareForm}>×</button><p class="overline">ОТМЕТКА ДЛЯ {activePet?.name.toUpperCase()}</p><h2 id="sheet-title">{careLabels[sheetKind]}</h2>
+			<div class="care-sheet" bind:this={careDialog} role="dialog" aria-modal="true" aria-labelledby="sheet-title" tabindex="-1" onkeydown={handleCareDialogKeydown}><div class="sheet-handle"></div><button class="sheet-close" aria-label="Закрыть" onclick={closeCareForm}><AppIcon kind="close" /></button><p class="overline">ОТМЕТКА ДЛЯ {activePet?.name.toUpperCase()}</p><h2 id="sheet-title">{careLabels[sheetKind]}</h2>
 				{#if sheetKind === 'meal'}<label for="care-amount">Граммы корма</label><div class="amount-input"><input id="care-amount" type="number" min="1" max="5000" bind:value={amount} /><span>г</span></div><label for="care-label">Марка или тип корма</label><input id="care-label" bind:value={label} placeholder="Например, утренний корм" />
 				{:else if sheetKind === 'walk'}<label for="care-amount">Длительность прогулки</label><div class="amount-input"><input id="care-amount" type="number" min="1" max="600" bind:value={amount} placeholder="30" /><span>мин</span></div><label for="care-label">Маршрут или занятие</label><input id="care-label" bind:value={label} placeholder="Например, парк" />
 				{:else if sheetKind === 'medicine'}<label for="care-label">Лекарство и доза</label><input id="care-label" bind:value={label} placeholder="Название, доза" />
