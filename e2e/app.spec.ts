@@ -61,6 +61,7 @@ test('waits for browser idle before loading Three.js', async ({ browser, baseURL
 	});
 	await page.goto(baseURL ?? 'http://127.0.0.1:4173/');
 	await expect(page.locator('.bowl-fallback')).toBeVisible();
+	await expect.poll(() => page.locator('.bowl-fallback img').evaluate((image) => (image as HTMLImageElement).naturalWidth)).toBe(320);
 	expect(threeRequested).toBe(false);
 	await expect.poll(() => page.evaluate(() => (window as Window & { getPendingIdleCallbackCount: () => number }).getPendingIdleCallbackCount())).toBe(1);
 	await page.getByRole('button', { name: 'Настройки', exact: true }).click();
@@ -112,6 +113,7 @@ test('starts without a sample dog and lets the family add its own profile', asyn
 	await page.reload();
 	await expect(page.locator('.app-shell')).toHaveAttribute('data-ready', 'true');
 	await expect(page.getByRole('heading', { name: 'Добавьте профиль собаки' })).toBeVisible();
+	await expect.poll(() => page.locator('.empty-art').evaluate((image) => (image as HTMLImageElement).naturalWidth)).toBe(320);
 	await expect(page.getByText('Мило', { exact: true })).toHaveCount(0);
 
 	await page.getByRole('button', { name: 'Добавить собаку', exact: true }).click();
@@ -406,6 +408,7 @@ test('keeps navigation and main screens usable on a narrow viewport', async ({ p
 	await expect(page.getByText(/на этом устройстве/i)).toBeVisible();
 	await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 	await page.getByRole('button', { name: 'Главная', exact: true }).click();
+	await expect(page.locator('.pet-initial')).toContainText('Р');
 	await page.getByRole('button', { name: 'Кормление', exact: true }).click();
 	await expect(page.getByRole('dialog')).toBeVisible();
 	await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
@@ -442,4 +445,6 @@ test('opens settings with local mode and privacy status', async ({ page }) => {
 	await page.getByRole('button', { name: 'Настройки', exact: true }).click();
 	await expect(page.getByRole('heading', { name: 'Настройки' })).toBeVisible();
 	await expect(sceneToggle).not.toBeChecked();
+	await page.getByRole('button', { name: 'Главная', exact: true }).click();
+	await expect.poll(() => page.locator('.bowl-static img').evaluate((image) => (image as HTMLImageElement).naturalWidth)).toBe(320);
 });

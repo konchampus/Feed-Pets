@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="230" viewBox="0 0 320 230" fill="none">
+  <defs>
+    <linearGradient id="ceramic" x1="67" x2="250" y1="107" y2="205" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#c9d0b2"/>
+      <stop offset=".48" stop-color="#9eaa83"/>
+      <stop offset="1" stop-color="#697858"/>
+    </linearGradient>
+    <linearGradient id="rim" x1="61" x2="258" y1="107" y2="131" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#f4eedb"/>
+      <stop offset=".5" stop-color="#fffaf0"/>
+      <stop offset="1" stop-color="#d9d1b8"/>
+    </linearGradient>
+    <linearGradient id="inner" x1="92" x2="228" y1="114" y2="139" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#6b4933"/>
+      <stop offset=".5" stop-color="#9c6844"/>
+      <stop offset="1" stop-color="#5b3d2c"/>
+    </linearGradient>
+    <radialGradient id="shine" cx="0" cy="0" r="1" gradientTransform="matrix(0 66 -104 0 125 135)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fff" stop-opacity=".54"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="softShadow" x="30" y="35" width="260" height="180" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse">
+      <feGaussianBlur stdDeviation="10"/>
+    </filter>
+  </defs>
+  <ellipse cx="160" cy="190" fill="#55644a" fill-opacity=".24" filter="url(#softShadow)" rx="102" ry="15"/>
+  <ellipse cx="160" cy="194" fill="#7e8768" fill-opacity=".15" rx="84" ry="10"/>
+  <path d="M59 111c6 49 22 83 48 95 32 14 74 14 106 0 26-12 42-46 48-95H59Z" fill="url(#ceramic)" stroke="#687653" stroke-width="3"/>
+  <path d="M74 137c9 37 20 54 39 63 26 12 68 12 94 0 19-9 30-26 39-63-20 11-53 17-86 17s-66-6-86-17Z" fill="url(#shine)"/>
+  <path d="M60 110c0-11 45-20 100-20s100 9 100 20-45 21-100 21-100-10-100-21Z" fill="url(#rim)" stroke="#d9d1b8" stroke-width="2"/>
+  <path d="M78 111c0-7 37-13 82-13s82 6 82 13-37 13-82 13-82-6-82-13Z" fill="url(#inner)"/>
+  <path d="M85 109c17-6 44-9 75-9" stroke="#d6ae7c" stroke-linecap="round" stroke-opacity=".42" stroke-width="2"/>
+  <path d="M94 116c8-10 18-9 22-1 3 6-2 10-9 10-6 0-11-3-13-9Zm28-7c6-9 15-10 19-3 4 6 0 12-7 13-5 1-10-3-12-10Zm28 2c6-10 16-9 19-2 3 6-2 11-9 11-5 0-8-3-10-9Zm28-2c7-8 16-7 18 1 2 7-3 11-10 10-5 0-7-4-8-11Zm27 2c5-8 13-7 15 0 2 6-3 10-8 10-5 0-7-4-7-10Z" fill="#d5a471" stroke="#583d2e" stroke-opacity=".34" stroke-width="1.2"/>
+  <path d="M79 130c13 9 37 15 64 17" stroke="#e8ebd8" stroke-linecap="round" stroke-opacity=".72" stroke-width="4"/>
+  <path d="M105 187c16 7 37 10 57 9" stroke="#e4e8d3" stroke-linecap="round" stroke-opacity=".4" stroke-width="2"/>
+  <circle cx="226" cy="157" r="2.5" fill="#e5e8d1" fill-opacity=".8"/>
+  <circle cx="215" cy="176" r="1.5" fill="#e5e8d1" fill-opacity=".65"/>
+</svg>

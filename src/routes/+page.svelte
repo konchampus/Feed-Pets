@@ -2,6 +2,7 @@
 	import { onMount, tick } from 'svelte';
 	import { base } from '$app/paths';
 	import BowlScene from '$lib/BowlScene.svelte';
+	import Illustration from '$lib/Illustration.svelte';
 	import { addEvent, clearDataScope, flushPendingEvents, getEvents, getPendingEvents, getPendingPushEvents, getPets, getSchedules, isValidBackup, isValidCareAmount, legacyStarterPetId, mergePendingEvents, parseOptionalAmount, removePendingEvent, removePendingPushEvent, saveEvents, savePendingEvent, savePendingPushEvent, savePets, saveSchedules, setDataScope, todayMeals } from '$lib/store';
 	import { careIcons, careLabels, type CareEvent, type CareKind, type CareSchedule, type Pet } from '$lib/types';
 	import { supabaseClient } from '$lib/supabase';
@@ -950,7 +951,7 @@
 			<section class="page-panel" role="status">Загружаем семейный дневник…</section>
 		{:else if tab === 'home'}
 			{#if !activePet}
-				<section class="page-panel"><div class="empty-state"><span>🐾</span><h2>Добавьте профиль собаки</h2><p>{familyRole === 'member' ? 'В семейном профиле пока нет собаки. Попросите владельца добавить её.' : cloudUser ? 'Настройте семейный профиль и добавьте первую собаку.' : legacyCareCount || legacyScheduleCount ? `Сохранено записей: ${legacyCareCount}, напоминаний: ${legacyScheduleCount}. Они сохранятся после добавления профиля.` : 'Укажите имя собаки, чтобы начать семейный дневник ухода.'}</p>
+				<section class="page-panel"><div class="empty-state"><Illustration kind="dog" className="empty-art" /><h2>Добавьте профиль собаки</h2><p>{familyRole === 'member' ? 'В семейном профиле пока нет собаки. Попросите владельца добавить её.' : cloudUser ? 'Настройте семейный профиль и добавьте первую собаку.' : legacyCareCount || legacyScheduleCount ? `Сохранено записей: ${legacyCareCount}, напоминаний: ${legacyScheduleCount}. Они сохранятся после добавления профиля.` : 'Укажите имя собаки, чтобы начать семейный дневник ухода.'}</p>
 					{#if familyRole !== 'member'}<button class="primary-button" onclick={openPetSetup}>{cloudUser ? 'Создать семейный профиль' : 'Добавить собаку'}</button>{/if}
 					{#if !cloudUser && supabase}<button class="secondary-button" onclick={() => { navigateToTab('settings'); settingsPanel = 'auth'; }}>Войти или создать семью</button>{/if}
 				</div></section>
@@ -959,11 +960,11 @@
 				<section class="welcome">
 					<div class="welcome-copy">
 						<p class="overline">ВАШ СЕМЕЙНЫЙ ДНЕВНИК</p>
-						<h1>Привет,<br />семья <span>♥</span></h1>
+						<h1>Привет,<br />семья <Illustration kind="heart" className="welcome-heart" /></h1>
 						<p class="welcome-date">{dateText}</p>
 					</div>
 					<div class="pet-switch" aria-label="Выбранная собака">
-						<div class="pet-initial">{activePet?.name.slice(0,1) ?? '🐾'}</div>
+						<div class="pet-initial">{#if activePet}{activePet.name.slice(0,1)}{:else}<Illustration kind="dog" className="avatar-art" />{/if}</div>
 						<div><strong>{activePet?.name ?? 'Добавьте собаку'}</strong><span>{activePet?.breed} · {age(activePet?.birthday ?? '')}</span></div>
 						{#if pets.length > 1}<button aria-label="Сменить собаку" onclick={rotatePet}>↗</button>{/if}
 					</div>
@@ -976,7 +977,7 @@
 				</section>
 
 				<section class="bowl-feature" aria-label="Профиль собаки">
-					{#if scene}<BowlScene />{:else}<div class="bowl-fallback big"><span>🥣</span><i>● ● ● ●</i></div>{/if}
+					{#if scene}<BowlScene />{:else}<div class="bowl-art bowl-static"><Illustration kind="bowl" className="bowl-artwork" /></div>{/if}
 					<div class="bowl-caption"><span>миска сегодня</span><strong>{meals.length} кормл. <i>·</i> {grams} г</strong></div>
 				</section>
 
@@ -1057,7 +1058,7 @@
 							{#if familyRole === 'owner'}<div class="inline-form"><label for="invite-email">Email участника <span>необязательно</span></label><input id="invite-email" type="email" bind:value={inviteEmail} placeholder="friend@example.com" /><button class="secondary-button" onclick={() => void createInvite()}>Создать ссылку-приглашение</button>{#if inviteLink}<label for="invite-link">Ссылка на 7 дней</label><input id="invite-link" readonly value={inviteLink} />{/if}</div>{/if}
 						</section>
 						<section class="settings-block">
-							<div class="settings-heading"><div><h2>Собаки</h2><p>Профили, которые ведёт ваша семья</p></div><span>🐾</span></div>
+							<div class="settings-heading"><div><h2>Собаки</h2><p>Профили, которые ведёт ваша семья</p></div><Illustration kind="dog" className="settings-dog-art" /></div>
 							{#each pets as pet}
 								<div class="pet-settings-row">
 									<div class="pet-initial">{pet.name.slice(0,1)}</div>

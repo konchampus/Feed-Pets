@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import Illustration from '$lib/Illustration.svelte';
 	let host: HTMLDivElement;
 	let failed = $state(false);
 	let ready = $state(false);
@@ -30,14 +31,13 @@
 
 <div class="bowl-art" bind:this={host} aria-hidden="true">
 	{#if failed || reduced || !ready}
-		<div class="bowl-fallback"><span>🥣</span><i>● ● ● ●</i></div>
+		<div class="bowl-fallback"><Illustration kind="bowl" className="bowl-artwork" /></div>
 	{/if}
 </div>
 
 <style>
 	.bowl-art { position: relative; width: 100%; height: 212px; overflow: hidden; border-radius: 44% 56% 38% 43% / 42% 36% 56% 51%; background: #eef0dc; }
 	.bowl-art :global(canvas) { display: block; width: 100%; height: 100%; }
-	.bowl-fallback { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 2px; background: radial-gradient(ellipse at 50% 72%, #dee4c4 0 37%, transparent 38%); pointer-events: none; }
-	.bowl-fallback span { font-size: 106px; line-height: 1; filter: drop-shadow(0 16px 8px #c0b69c); }
-	.bowl-fallback i { color: #67442c; letter-spacing: 8px; font-style: normal; font-size: 12px; margin-top: -21px; }
+	.bowl-fallback { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; background: radial-gradient(ellipse at 50% 72%, #dee4c4 0 37%, transparent 38%); pointer-events: none; }
+	.bowl-fallback :global(.bowl-artwork) { width: min(78%, 220px); height: auto; filter: drop-shadow(0 16px 8px #c0b69c); }
 </style>
