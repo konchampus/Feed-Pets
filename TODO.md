@@ -91,7 +91,7 @@
 - [x] Подключить клиент Pages к Supabase: workflow содержит публичные URL и Publishable key как build defaults, Actions Secrets могут переопределить их при ротации или смене проекта. Auth settings endpoint ответил 200 в опубликованном браузере. Для Push остаётся настроить только публичный `PUBLIC_VAPID_KEY` вместе с VAPID-парой ниже.
 - [x] Настроить GitHub Pages → GitHub Actions и проверить deploy вместе с HTTP 200 главной (run `37017681400`).
 - [x] Проверить, что Supabase Site URL равен `https://konchampus.github.io/Feed-Pets/` и корневой redirect URL разрешён.
-- [ ] Сохранить и проверить в Supabase Auth URL Configuration wildcard redirect `https://konchampus.github.io/Feed-Pets/**`; пользователь подтвердил сохранение, но вкладка Supabase дважды зависла при подключении управления браузером, поэтому Save и повторная проверка ещё не выполнены.
+- [x] Проверить в Supabase Auth URL Configuration wildcard redirect `https://konchampus.github.io/Feed-Pets/**`: значение присутствует среди трёх Redirect URLs, кнопка Save неактивна, значит несохранённых изменений нет (проверено 2026-10-05).
 - [ ] Включить защиту Supabase Auth от известных утёкших паролей: Security Advisor сообщает, что она выключена; настройка доступна с плана Pro и выше, а организация сейчас на Free. Не включать без изменения плана.
 - [ ] Настроить отдельный Gmail SMTP с App Password в Supabase и проверить письмо подтверждения/восстановления.
 - [ ] Создать Google OAuth client и добавить credentials в Supabase.
@@ -150,7 +150,7 @@
 - [x] Переносить пояс через семейную загрузку и резервную копию; сохранять исходный пояс при повторе незавершённого создания; оставлять совместимость со старыми локальными backup без поля `timezone`.
 - [x] Проверить локально: `npm run check` — 0 ошибок/предупреждений; unit — 49; Playwright E2E — 16; Supabase outbox E2E — 1; production build и `git diff --check` прошли. Два независимых review кода не нашли блокеров.
 - [x] Опубликовать timezone-изменения: Actions run #91 для `da54e98` прошёл database, build и deploy; два независимых Playwright браузерных прохода кликали опубликованный сайт в desktop `1365×900` (`Pacific/Honolulu`) и mobile `390×844` (`Asia/Tokyo`). В изолированных контекстах добавлены временные собаки и напоминания, сохранённый пояс виден в «Плане», следующий показан в «Главной»; ошибок страницы/консоли/HTTP 400+ и overflow нет. Реальная доставка push этими проверками не подтверждена.
-- [ ] Сохранить wildcard redirect в Supabase Dashboard после восстановления управления вкладкой и подтвердить значение повторным открытием формы.
+- [x] Повторно подтвердить сохранённый wildcard redirect в Supabase Dashboard; тот же URL записан выше.
 - [ ] Повторить оставшиеся проверки реальных аккаунтов, семейного Realtime, сервера Push, Cron и установленного iPhone PWA из пунктов выше.
 
 ## SVG-иллюстрации (2026-10-04)
