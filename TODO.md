@@ -194,4 +194,6 @@
 - [x] Повторно сверить Supabase: проект ACTIVE_HEALTHY, Postgres 17.11, 10 миграций и 7 активных Edge Functions. `project_url` и действующий publishable key сохранены в Vault; Cron jobs и чувствительных ключей пока нет; `pg_net` остаётся в `public`.
 - [x] Добавить в live Vault только публичные `project_url` и `publishable_key`; имена проверены без чтения значений.
 - [x] Проверить локальную интеграционную среду: Supabase CLI 2.119.0 есть, но не авторизован; Docker/Podman не установлены. VHDX читается из Windows, однако запуск Ubuntu-22.04 в WSL возвращает `E_ACCESSDENIED`; WSL-образ и службы не менялись.
+- [x] Проверить защиту live `send-reminders`: POST с publishable key, но без `CRON_SECRET`, возвращает `401 Unauthorized`; Cron job и семейные данные не затрагивались.
+- [x] Actions run `37260358319` для `5022d17` прошёл database, build и deploy.
 - [ ] Удалить старую QA-собаку и её расписание из общей локальной вкладки только после подтверждения пользователя непосредственно перед удалением.
