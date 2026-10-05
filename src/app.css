@@ -46,6 +46,7 @@ h1, h2, h3, p { margin-top: 0; }
 .pet-switch strong { font: 700 14px system-ui, sans-serif; }
 .pet-switch div span { color: var(--muted); font-size: 11px; white-space: nowrap; }
 .pet-switch button { margin-left: auto; border: 0; background: transparent; color: var(--leaf); }
+.pet-switch button .app-icon { width: 18px; height: 18px; }
 .bowl-feature { grid-column: 2; grid-row: 1 / span 2; align-self: stretch; display: flex; flex-direction: column; justify-content: center; padding: 18px 9px 6px; position: relative; }
 .bowl-static { width: 100%; height: 212px; display: grid; place-items: center; overflow: hidden; border-radius: 44% 56% 38% 43% / 42% 36% 56% 51%; background: #eef0dc; }
 .bowl-static .bowl-artwork { width: min(78%, 220px); height: auto; filter: drop-shadow(0 16px 8px #c0b69c); }
@@ -64,7 +65,9 @@ h1, h2, h3, p { margin-top: 0; }
 .care-button.featured { border-color: #d6d9c6; background: var(--sage); }
 .care-icon { display: grid; place-items: center; width: 30px; height: 30px; padding: 2px; border-radius: 9px; background: white; color: var(--leaf); }
 .featured .care-icon { background: #d6dfc5; color: var(--leaf-dark); }
-.shortcut { position: absolute; right: 10px; top: 8px; color: #8a9a78; font-size: 17px; }
+.shortcut { position: absolute; right: 9px; top: 7px; width: 18px; height: 18px; color: #8a9a78; }
+.shortcut .app-icon { width: 100%; height: 100%; }
+.inline-arrow { display: inline-block; width: 12px; height: 12px; margin-left: 5px; vertical-align: -2px; }
 .today-feed { grid-column: 1; grid-row: 3; padding: 25px 0 45px; }
 .today-feed .section-heading { margin-bottom: 12px; }
 .text-link, .invite-link { padding: 0; border: 0; background: none; color: var(--leaf); font-size: 11px; font-weight: 700; }
@@ -91,7 +94,9 @@ h1, h2, h3, p { margin-top: 0; }
 .family-dots { display: flex; padding-left: 1px; }
 .family-dots b { display: grid; place-items: center; width: 30px; height: 30px; border: 2px solid #fffef8; border-radius: 50%; background: #e6e9d6; color: var(--leaf-dark); font: 700 11px 'DM Sans'; }
 .family-dots b + b { margin-left: -7px; background: #f0e5d2; color: var(--rust); }
-.family-header > button { border: 0; background: transparent; color: var(--leaf); font-size: 20px; }
+.family-dots .family-add .app-icon { width: 17px; height: 17px; }
+.family-header > button { width: 28px; height: 28px; padding: 5px; border: 0; background: transparent; color: var(--leaf); }
+.family-header > button .app-icon { width: 100%; height: 100%; }
 .family-card h3 { margin: 12px 0 4px; font: 700 18px var(--serif); }
 .family-card p { margin: 0 0 10px; color: var(--muted); font-size: 11px; line-height: 1.5; }
 .reminder-card { min-height: 80px; display: flex; align-items: center; gap: 13px; padding: 13px 16px; border-radius: 13px; background: #e9e6d7; }
@@ -130,6 +135,7 @@ h1, h2, h3, p { margin-top: 0; }
 .empty-state p { color: var(--muted); font-size: 13px; }
 .primary-button { min-height: 42px; padding: 0 18px; border: 0; border-radius: 10px; background: var(--leaf-dark); color: white; font-size: 12px; font-weight: 600; }
 .primary-button:hover { background: #52694a; }
+.primary-button .app-icon { display: inline-block; width: 15px; height: 15px; margin: 0 6px -3px 0; }
 .secondary-button { min-height: 39px; padding: 0 14px; border: 1px solid #d8decc; border-radius: 9px; background: #f7f8ef; color: var(--leaf-dark); font-size: 11px; font-weight: 600; }
 .schedule-compose { display: grid; grid-template-columns: 1.6fr 1fr 120px auto; align-items: end; gap: 12px; max-width: 900px; padding: 23px 0; border-bottom: 1px solid var(--line); }
 .schedule-compose > div { display: grid; gap: 7px; }

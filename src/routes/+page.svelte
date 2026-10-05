@@ -1129,7 +1129,7 @@
 					<div class="pet-switch" aria-label="Выбранная собака">
 						<div class="pet-initial">{#if activePet}{activePet.name.slice(0,1)}{:else}<Illustration kind="dog" className="avatar-art" />{/if}</div>
 						<div><strong>{activePet?.name ?? 'Добавьте собаку'}</strong><span>{activePet?.breed} · {age(activePet?.birthday ?? '')}</span></div>
-						{#if pets.length > 1}<button aria-label="Сменить собаку" onclick={rotatePet}>↗</button>{/if}
+						{#if pets.length > 1}<button aria-label="Сменить собаку" onclick={rotatePet}><AppIcon kind="arrow" /></button>{/if}
 					</div>
 					{#if !cloudUser && !familyId && (legacyCareCount || legacyScheduleCount)}
 						<div class="legacy-transfer" role="note">
@@ -1149,14 +1149,14 @@
 					<div class="care-buttons">
 						{#each kindOptions as kind, i}
 							<button class:featured={i === 0} class="care-button" aria-label={careLabels[kind]} onclick={() => openForm(kind)}>
-								<span class="care-icon"><AppIcon kind={kind} /></span><span>{careLabels[kind]}</span>{#if i === 0}<span class="shortcut">+</span>{/if}
+								<span class="care-icon"><AppIcon kind={kind} /></span><span>{careLabels[kind]}</span>{#if i === 0}<span class="shortcut"><AppIcon kind="add" /></span>{/if}
 							</button>
 						{/each}
 					</div>
 				</section>
 
 				<section class="today-feed" aria-labelledby="feed-title">
-					<div class="section-heading"><div><p class="overline">СЕГОДНЯ</p><h2 id="feed-title">День {activePet?.name}</h2></div><button class="text-link" onclick={() => navigateToTab('history')}>Вся история ↗</button></div>
+					<div class="section-heading"><div><p class="overline">СЕГОДНЯ</p><h2 id="feed-title">День {activePet?.name}</h2></div><button class="text-link" onclick={() => navigateToTab('history')}>Вся история<AppIcon kind="arrow" className="inline-arrow" /></button></div>
 					{#if sortedEvents.length}
 						<div class="timeline">
 							{#each sortedEvents.slice(0, 4) as event}
@@ -1169,7 +1169,7 @@
 
 			<aside class="side-column">
 				<div class="care-note"><AppIcon kind="paw" className="care-note-paw" /><AppIcon kind="sparkle" className="note-star" /><p class="overline">ОДНА НЕДЕЛЯ РЯДОМ</p><strong>{weekCount}<span> дел заботы</span></strong><p>Каждая отметка помогает всей семье быть на одной волне.</p></div>
-				<div class="family-card"><div class="family-header">{#if familyId}<div class="family-dots"><b>{member.slice(0,1).toUpperCase()}</b>{#if familyRole === 'owner'}<b>+</b>{/if}</div>{:else}<span class="overline">НА ЭТОМ УСТРОЙСТВЕ</span>{/if}{#if familyRole === 'owner'}<button aria-label="Добавить участника" onclick={() => { navigateToTab('settings'); settingsPanel = 'profile'; }}>＋</button>{/if}</div><h3>{familyId ? 'Свои рядом' : 'Дневник ухода'}</h3><p>{familyId ? `Общий профиль${familyName ? ` · ${familyName}` : ''}` : cloudUser ? 'Создайте семейный профиль для синхронизации.' : 'Записи пока сохранены только в этом браузере.'}</p><button class="invite-link" onclick={() => { navigateToTab('settings'); settingsPanel = cloudUser ? 'profile' : 'auth'; }}>{familyRole === 'owner' ? 'Пригласить участника ↗' : familyId ? 'Настроить профиль семьи ↗' : cloudUser ? 'Создать семейный профиль ↗' : 'Подключить семью ↗'}</button></div>
+				<div class="family-card"><div class="family-header">{#if familyId}<div class="family-dots"><b>{member.slice(0,1).toUpperCase()}</b>{#if familyRole === 'owner'}<b class="family-add"><AppIcon kind="add" /></b>{/if}</div>{:else}<span class="overline">НА ЭТОМ УСТРОЙСТВЕ</span>{/if}{#if familyRole === 'owner'}<button aria-label="Добавить участника" onclick={() => { navigateToTab('settings'); settingsPanel = 'profile'; }}><AppIcon kind="add" /></button>{/if}</div><h3>{familyId ? 'Свои рядом' : 'Дневник ухода'}</h3><p>{familyId ? `Общий профиль${familyName ? ` · ${familyName}` : ''}` : cloudUser ? 'Создайте семейный профиль для синхронизации.' : 'Записи пока сохранены только в этом браузере.'}</p><button class="invite-link" onclick={() => { navigateToTab('settings'); settingsPanel = cloudUser ? 'profile' : 'auth'; }}>{familyRole === 'owner' ? 'Пригласить участника' : familyId ? 'Настроить профиль семьи' : cloudUser ? 'Создать семейный профиль' : 'Подключить семью'}<AppIcon kind="arrow" className="inline-arrow" /></button></div>
 				<div class="reminder-card"><div class="reminder-mark"><AppIcon kind="clock" /></div><div><span>СЛЕДУЮЩЕЕ</span><strong>{nextSchedule?.schedule.title ?? 'Пока без напоминаний'}</strong><small>{nextScheduleTime()}</small></div><button aria-label="Открыть расписание" onclick={() => navigateToTab('schedule')}><AppIcon kind="arrow" /></button></div>
 			</aside>
 			{/if}
@@ -1244,7 +1244,7 @@
 										editingPetId = ''; petName = ''; petBreed = ''; petBirthday = ''; petWeight = ''; petAllergies = ''; petHealthNotes = '';
 									}
 									settingsPanel = settingsPanel === 'add-pet' ? '' : 'add-pet';
-								}}>＋ Добавить собаку</button>
+								}}><AppIcon kind="add" />Добавить собаку</button>
 								{#if settingsPanel === 'add-pet' || settingsPanel === 'edit-pet'}
 									<div class="inline-form">
 										{#if editingPetId}<h3>Профиль: {pets.find((pet) => pet.id === editingPetId)?.name}</h3>{/if}
@@ -1261,7 +1261,7 @@
 							{/if}
 						</section>
 						<section class="settings-block"><div class="settings-heading"><div><h2>Ваши напоминания</h2><p>{pushEnabled ? 'Уведомления включены на этом устройстве.' : 'Нужны для событий семьи и расписания.'}</p></div><AppIcon kind="bell" /></div>{#if pushConfigured}{#if familyId}<button class="secondary-button" onclick={() => pushEnabled ? void disablePush() : void enablePush()}>{pushEnabled ? 'Отключить уведомления' : 'Включить уведомления'}</button>{:else}<button class="secondary-button" onclick={() => { navigateToTab('settings'); settingsPanel = cloudUser ? 'profile' : 'auth'; }}>{cloudUser ? 'Создать семейный профиль' : 'Войти в семейный профиль'}</button>{/if}{:else}<p class="fine-print">{supabase ? 'Клиент Supabase настроен. Для Push нужен публичный VAPID key в GitHub Actions; шаги и серверные ключи описаны в README.' : 'Для Push подключите Supabase и задайте публичный VAPID key в GitHub Actions. Шаги есть в README репозитория.'}</p>{/if}<p class="fine-print">На iPhone откройте сайт в Safari, добавьте его на экран «Домой» и включите уведомления внутри установленного PWA.</p></section>
-					</div><aside class="settings-side"><section class="settings-block"><div class="settings-heading"><div><h2>Внешний вид</h2><p>Легко для глаз и устройства</p></div><AppIcon kind="appearance" /></div><label class="setting-toggle"><span>3D-миска</span><input type="checkbox" bind:checked={scene} onchange={() => localStorage.setItem('lapki:scene', String(scene))} /><i></i></label><label class="setting-toggle"><span>Звук отметки</span><input type="checkbox" bind:checked={soundEnabled} onchange={() => localStorage.setItem('lapki:sound', String(soundEnabled))} /><i></i></label><label class="setting-toggle"><span>Уменьшить анимацию</span><input type="checkbox" bind:checked={reducedMotion} onchange={() => localStorage.setItem('lapki:reduced-motion', String(reducedMotion))} /><i></i></label></section><section class="settings-block"><div class="settings-heading"><div><h2>Копия данных</h2><p>Храните свои записи в безопасности</p></div><AppIcon kind="download" /></div><button class="secondary-button" disabled={exportingBackup} onclick={exportData}>{exportingBackup ? 'Готовим копию…' : 'Скачать резервную копию'}</button><button class="quiet-button" disabled={Boolean(cloudUser)} onclick={importData}>Восстановить из файла</button><input bind:this={fileInput} class="sr-only" type="file" accept="application/json" onchange={readBackup} /><p class="fine-print">{cloudUser ? 'Для восстановления выйдите в локальный режим.' : 'На бесплатном тарифе Supabase нет автоматических резервных копий.'}</p></section><section class="settings-block info-block"><p class="overline">ПРИВАТНОСТЬ</p><p>Локальные данные остаются в этом браузере. Общий доступ появляется после подключения Supabase; записи защищены политиками доступа семьи.</p><a href="https://supabase.com/docs/guides/platform/free" target="_blank" rel="noreferrer">О бесплатном тарифе Supabase ↗</a></section></aside></div>
+					</div><aside class="settings-side"><section class="settings-block"><div class="settings-heading"><div><h2>Внешний вид</h2><p>Легко для глаз и устройства</p></div><AppIcon kind="appearance" /></div><label class="setting-toggle"><span>3D-миска</span><input type="checkbox" bind:checked={scene} onchange={() => localStorage.setItem('lapki:scene', String(scene))} /><i></i></label><label class="setting-toggle"><span>Звук отметки</span><input type="checkbox" bind:checked={soundEnabled} onchange={() => localStorage.setItem('lapki:sound', String(soundEnabled))} /><i></i></label><label class="setting-toggle"><span>Уменьшить анимацию</span><input type="checkbox" bind:checked={reducedMotion} onchange={() => localStorage.setItem('lapki:reduced-motion', String(reducedMotion))} /><i></i></label></section><section class="settings-block"><div class="settings-heading"><div><h2>Копия данных</h2><p>Храните свои записи в безопасности</p></div><AppIcon kind="download" /></div><button class="secondary-button" disabled={exportingBackup} onclick={exportData}>{exportingBackup ? 'Готовим копию…' : 'Скачать резервную копию'}</button><button class="quiet-button" disabled={Boolean(cloudUser)} onclick={importData}>Восстановить из файла</button><input bind:this={fileInput} class="sr-only" type="file" accept="application/json" onchange={readBackup} /><p class="fine-print">{cloudUser ? 'Для восстановления выйдите в локальный режим.' : 'На бесплатном тарифе Supabase нет автоматических резервных копий.'}</p></section><section class="settings-block info-block"><p class="overline">ПРИВАТНОСТЬ</p><p>Локальные данные остаются в этом браузере. Общий доступ появляется после подключения Supabase; записи защищены политиками доступа семьи.</p><a href="https://supabase.com/docs/guides/platform/free" target="_blank" rel="noreferrer">О бесплатном тарифе Supabase <AppIcon kind="arrow" className="inline-arrow" /></a></section></aside></div>
 			</section>
 		{/if}
 	</main>

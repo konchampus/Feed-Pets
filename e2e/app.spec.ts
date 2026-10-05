@@ -110,12 +110,19 @@ test('records care with a clear confirmation and shows it in history', async ({ 
 
 test('uses vector icons throughout care, navigation, schedule and settings', async ({ page }) => {
 	await expect(page.locator('.care-icon > svg.app-icon')).toHaveCount(7);
+	await expect(page.locator('.shortcut > svg.app-icon')).toHaveCount(1);
 	await expect(page.locator('.bottom-nav > button > svg.app-icon')).toHaveCount(4);
+	await expect(page.locator('.text-link > svg.app-icon')).toHaveCount(1);
+	await expect(page.locator('.invite-link > svg.app-icon')).toHaveCount(1);
+	expect(await page.locator('body').evaluate((body) => /\p{Emoji_Presentation}/u.test(body.innerText))).toBe(false);
 	await page.getByRole('button', { name: 'История', exact: true }).click();
+	expect(await page.locator('body').evaluate((body) => /\p{Emoji_Presentation}/u.test(body.innerText))).toBe(false);
 	await expect(page.locator('.empty-mark.app-icon')).toBeVisible();
 	await page.getByRole('button', { name: 'Расписание', exact: true }).click();
+	expect(await page.locator('body').evaluate((body) => /\p{Emoji_Presentation}/u.test(body.innerText))).toBe(false);
 	await expect(page.locator('.empty-line > svg.app-icon')).toBeVisible();
 	await page.getByRole('button', { name: 'Настройки', exact: true }).click();
+	expect(await page.locator('body').evaluate((body) => /\p{Emoji_Presentation}/u.test(body.innerText))).toBe(false);
 	await expect(page.getByRole('heading', { name: 'Настройки' })).toBeVisible();
 	await expect(page.locator('.settings-heading > svg.app-icon')).toHaveCount(4);
 	expect(await page.locator('svg.app-icon').evaluateAll((icons) => icons.every((icon) => icon.getAttribute('aria-hidden') === 'true'))).toBe(true);
@@ -214,7 +221,7 @@ test('clears the previous success message when opening family setup', async ({ p
 
 	await page.getByRole('button', { name: 'Главная', exact: true }).click();
 	await expect(page.getByRole('status')).toHaveCount(0);
-	await page.getByRole('button', { name: 'Подключить семью ↗', exact: true }).click();
+	await page.getByRole('button', { name: 'Подключить семью', exact: true }).click();
 	await expect(page.getByRole('heading', { name: 'Настройки', exact: true })).toBeVisible();
 	await expect(page.getByText(/Семейный вход появится после подключения Supabase/)).toBeVisible();
 	await expect(page.getByRole('status')).toHaveCount(0);
