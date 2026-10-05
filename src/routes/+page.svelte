@@ -4,7 +4,7 @@
 	import BowlScene from '$lib/BowlScene.svelte';
 	import AppIcon from '$lib/AppIcon.svelte';
 	import Illustration from '$lib/Illustration.svelte';
-	import { addEvent, clearDataScope, flushPendingEvents, getCachedFamilyId, getEvents, getPendingEvents, getPendingPushEvents, getPets, getSchedules, isValidBackup, isValidCareAmount, legacyStarterPetId, mergePendingEvents, parseOptionalAmount, removePendingEvent, removePendingPushEvent, saveCachedFamilyId, saveEvents, savePendingEvent, savePendingPushEvent, savePets, saveSchedules, setDataScope, todayMeals } from '$lib/store';
+	import { addEvent, clearDataScope, flushPendingEvents, getCachedFamilyId, getEvents, getPendingEvents, getPendingPushEvents, getPets, getSchedules, isValidBackup, isValidCareAmount, latestWeightsByPet, legacyStarterPetId, mergePendingEvents, parseOptionalAmount, removePendingEvent, removePendingPushEvent, saveCachedFamilyId, saveEvents, savePendingEvent, savePendingPushEvent, savePets, saveSchedules, setDataScope, todayMeals } from '$lib/store';
 	import { careLabels, type CareEvent, type CareKind, type CareSchedule, type Pet } from '$lib/types';
 	import { getStoredAuthUserId, refreshStoredAuthSession, supabaseClient } from '$lib/supabase';
 	import { fetchAllPages } from '$lib/paginated-query';
@@ -509,10 +509,7 @@
 		const serverEvents = eventRows.map((row) => ({ id: row.id, petId: row.pet_id, kind: row.kind, occurredAt: row.occurred_at, authorId: row.author_id, by: row.actor_name, amount: row.amount ? Number(row.amount) : undefined, unit: row.unit ?? undefined, label: row.label ?? undefined, note: row.note ?? undefined }));
 		events = mergePendingEvents(serverEvents);
 		saveEvents(events);
-		const latestWeight = new Map<string, number>();
-		for (const event of events) {
-			if (event.kind === 'weight' && event.amount && !latestWeight.has(event.petId)) latestWeight.set(event.petId, event.amount);
-		}
+		const latestWeight = latestWeightsByPet(events);
 		pets = petRows.map((pet) => ({ id: pet.id, name: pet.name, breed: pet.breed, birthday: pet.birthday ?? '', photo: pet.photo_url ?? undefined, weightKg: latestWeight.get(pet.id) ?? 0, allergies: pet.allergies, healthNotes: pet.health_notes }));
 		petIndex = 0; savePets(pets);
 		schedules = scheduleRows.map((row) => ({ id: row.id, petId: row.pet_id, kind: row.kind, title: row.title, time: String(row.local_time).slice(0, 5), timezone: row.timezone, days: row.weekdays, enabled: row.is_active }));
@@ -1048,10 +1045,7 @@
 					return;
 				}
 				backupEvents = mergePendingEvents(eventRows.map((row) => ({ id: row.id, petId: row.pet_id, kind: row.kind, occurredAt: row.occurred_at, authorId: row.author_id, by: row.actor_name, amount: row.amount ? Number(row.amount) : undefined, unit: row.unit ?? undefined, label: row.label ?? undefined, note: row.note ?? undefined })));
-				const latestWeight = new Map<string, number>();
-				for (const event of backupEvents) {
-					if (event.kind === 'weight' && event.amount && !latestWeight.has(event.petId)) latestWeight.set(event.petId, event.amount);
-				}
+				const latestWeight = latestWeightsByPet(backupEvents);
 				backupPets = petRows.map((pet) => ({ id: pet.id, name: pet.name, breed: pet.breed, birthday: pet.birthday ?? '', photo: pet.photo_url ?? undefined, weightKg: latestWeight.get(pet.id) ?? 0, allergies: pet.allergies, healthNotes: pet.health_notes }));
 				backupSchedules = scheduleRows.map((row) => ({ id: row.id, petId: row.pet_id, kind: row.kind, title: row.title, time: String(row.local_time).slice(0, 5), timezone: row.timezone, days: row.weekdays, enabled: row.is_active }));
 			} else if (!isCurrentFamilyContext(context)) {

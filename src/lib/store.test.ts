@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { addEvent, clearDataScope, flushPendingEvents, getCachedFamilyId, getEvents, getPendingEvents, getPendingPushEvents, getPets, isValidBackup, isValidCareAmount, legacyStarterPetId, mergePendingEvents, parseOptionalAmount, removePendingEvent, removePendingPushEvent, saveCachedFamilyId, saveEvents, savePendingEvent, savePendingPushEvent, savePets, setDataScope, todayMeals } from './store';
+import { addEvent, clearDataScope, flushPendingEvents, getCachedFamilyId, getEvents, getPendingEvents, getPendingPushEvents, getPets, isValidBackup, isValidCareAmount, latestWeightsByPet, legacyStarterPetId, mergePendingEvents, parseOptionalAmount, removePendingEvent, removePendingPushEvent, saveCachedFamilyId, saveEvents, savePendingEvent, savePendingPushEvent, savePets, setDataScope, todayMeals } from './store';
 import type { CareEvent, Pet } from './types';
 
 afterEach(() => { localStorage.clear(); setDataScope('local'); vi.useRealTimers(); vi.unstubAllGlobals(); });
@@ -63,6 +63,16 @@ describe('care journal storage', () => {
 		];
 		expect(todayMeals(rows, 'milo')).toHaveLength(1);
 		expect(todayMeals(rows, 'milo').reduce((sum, row) => sum + (row.amount ?? 0), 0)).toBe(80);
+	});
+
+	it('uses the newest weight by event time even when pages arrive in ID order', () => {
+		const events: CareEvent[] = [
+			{ id: 'event-a', petId: 'milo', kind: 'weight', occurredAt: '2026-01-01T08:00:00.000Z', by: 'Я', amount: 9.8 },
+			{ id: 'event-z', petId: 'milo', kind: 'weight', occurredAt: '2026-09-01T08:00:00.000Z', by: 'Я', amount: 12.7 },
+			{ id: 'other-dog-weight', petId: 'other-dog', kind: 'weight', occurredAt: '2026-08-01T08:00:00.000Z', by: 'Я', amount: 18.2 }
+		];
+
+		expect(latestWeightsByPet(events)).toEqual(new Map([['milo', 12.7], ['other-dog', 18.2]]));
 	});
 
 	it('persists newly logged care events', () => {

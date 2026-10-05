@@ -105,6 +105,17 @@ export function mergePendingEvents(serverEvents: CareEvent[], pendingEvents = ge
 	for (const event of pendingEvents) mergedEvents.set(event.id, event);
 	return [...mergedEvents.values()].sort((first, second) => second.occurredAt.localeCompare(first.occurredAt));
 }
+export function latestWeightsByPet(events: CareEvent[]) {
+	const latestWeights = new Map<string, { amount: number; occurredAt: string }>();
+	for (const event of events) {
+		if (event.kind !== 'weight' || !event.amount) continue;
+		const previousWeight = latestWeights.get(event.petId);
+		if (!previousWeight || event.occurredAt > previousWeight.occurredAt) {
+			latestWeights.set(event.petId, { amount: event.amount, occurredAt: event.occurredAt });
+		}
+	}
+	return new Map([...latestWeights].map(([petId, weight]) => [petId, weight.amount]));
+}
 export function getSchedules(): CareSchedule[] { return read('schedules', []); }
 export function saveSchedules(schedules: CareSchedule[]) { write('schedules', schedules); }
 
